@@ -12,14 +12,21 @@ const client = new Client({
   ],
 });
 
+const missingEnvVars = ["BOT_TOKEN", "OPENAI_API_KEY"].filter(
+  (key) => !process.env[key]
+);
+if (missingEnvVars.length > 0) {
+  // Join the missing environment variable names into a single string for the error message.
+  const missingVarsString = missingEnvVars.join(" and ");
+  console.error(
+    `Missing required environment variable(s): ${missingVarsString}. Please provide them in the .env file.`
+  );
+  process.exit(1);
+}
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-
-if (!process.env.BOT_TOKEN) {
-  console.error("Discord bot token is missing");
-  process.exit(1);
-}
 
 client.once("ready", () => {
   console.log("Discord bot is ready");
