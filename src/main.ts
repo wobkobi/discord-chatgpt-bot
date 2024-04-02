@@ -33,7 +33,7 @@ client.once("ready", () => {
 });
 
 const cooldownSet = new Set();
-const cooldownTime = 30000;
+const cooldownTime = 10000;
 
 client.on("messageCreate", async (message: Message) => {
   if (message.author.bot || !client.user || !message.content) return;
