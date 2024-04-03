@@ -4,6 +4,12 @@ import OpenAI, { APIError } from "openai";
 
 dotenv.config();
 
+interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  name: string;
+  content: string;
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -12,11 +18,15 @@ const client = new Client({
   ],
 });
 
+const conversationHistories = new Map<
+  string,
+  { role: string; name: string; content: string }[]
+>();
+
 const missingEnvVars = ["BOT_TOKEN", "OPENAI_API_KEY"].filter(
   (key) => !process.env[key]
 );
 if (missingEnvVars.length > 0) {
-  // Join the missing environment variable names into a single string for the error message.
   const missingVarsString = missingEnvVars.join(" and ");
   console.error(
     `Missing required environment variable(s): ${missingVarsString}. Please provide them in the .env file.`
@@ -38,22 +48,43 @@ const cooldownTime = 10000;
 client.on("messageCreate", async (message: Message) => {
   if (message.author.bot || !client.user || !message.content) return;
 
-  if (
-    message.mentions.has(client.user.id) &&
-    message.content.trim().endsWith("?")
-  ) {
+  let context: ChatMessage[] = [];
+
+  if (message.mentions.has(client.user.id)) {
     const userId = message.author.id;
     if (cooldownSet.has(userId)) {
       await message.reply("Please wait before asking another question.");
       return;
     }
 
+    if (message.reference && message.reference.messageId) {
+      const originalMessage = await message.fetchReference();
+      const conversationId =
+        originalMessage.author.id === client.user.id
+          ? message.author.id
+          : originalMessage.author.id;
+
+      // Retrieve existing conversation history, if any
+      const existingContext = conversationHistories.get(conversationId) || [];
+      context = existingContext.map((msg) => ({
+        ...msg,
+        name: msg.role === "user" ? "User" : "Bot",
+        role: msg.role as "user" | "assistant" | "system",
+      }));
+    }
+
+    context.push({
+      role: "user",
+      name: "User",
+      content: message.content,
+    });
+    conversationHistories.set(message.author.id, context);
+
     cooldownSet.add(userId);
     setTimeout(() => cooldownSet.delete(userId), cooldownTime);
 
     const query = message.content.replace(/<@!?(\d+)>/g, "").trim();
 
-    // Ensure the query is not just a question mark or empty after removing the mention
     if (!query || query === "?") {
       await message.reply("Please provide a more detailed question.");
       return;
@@ -62,11 +93,9 @@ client.on("messageCreate", async (message: Message) => {
     try {
       const chatResponse = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",
-        messages: [{ role: "user", content: query }],
-        max_tokens: 150,
+        messages: context,
       });
 
-      // if chatResponse.choices[0].message.content is empty, it means the model didn't generate a response
       if (!chatResponse.choices[0].message.content) {
         await message.reply("I'm not sure how to respond to that.");
         return;
