@@ -9,6 +9,8 @@ import {
 } from "../utils/file.js";
 
 const cooldownSet = new Set();
+
+// 5 seconds cooldown between messages
 const cooldownTime = 5000;
 
 const conversationHistories: Map<
@@ -88,7 +90,7 @@ function shouldIgnoreMessage(message: Message, client: Client): boolean {
   // Check if the message is from a bot, lacks content, mentions everyone, or doesn't mention the bot specifically
   return (
     message.author.bot || // Message is from another bot
-    !client.user || // Bot client user isn't correctly initialized
+    !client.user || // Bot client user isn't correctly initialised
     !message.content || // Message has no content
     message.mentions.everyone || // Message mentions everyone (@everyone or @here)
     !message.mentions.has(client.user.id) // Message does not specifically mention this bot
@@ -175,7 +177,7 @@ export async function run(client: Client) {
 
     console.log("Bot is ready.");
   } catch (error) {
-    console.error("Failed to initialize conversations:", error);
+    console.error("Failed to initialise conversations:", error);
     process.exit(1); // Exit if the setup fails critically
   }
 }

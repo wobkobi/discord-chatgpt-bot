@@ -5,6 +5,7 @@ import ChatMessage from "../types/chatMessage.js";
 import ConversationContext from "../types/conversationContext.js";
 
 const DATA_DIRECTORY = "./data";
+
 const updatedServers = new Set<string>(); // Tracks which server IDs need saving
 
 export async function saveConversations(
@@ -22,16 +23,17 @@ export async function saveConversations(
         await ensureDirectoryExists(serverDataPath);
 
         const conversationsData = JSON.stringify(
-          Array.from(histories.entries()).reduce<ConversationsStructure>(
-            (obj, [key, context]) => {
-              // Ensure each key in the object maps to an object with a 'messages' property
-              obj[key] = {
-                messages: Array.from(context.messages.entries()),
-              };
-              return obj;
-            },
-            {}
-          )
+          Array.from(histories.entries()).reduce<{
+            [key: string]: {
+              messages: [string, ChatMessage][];
+            };
+          }>((obj, [key, context]) => {
+            // Ensure each key in the object maps to an object with a 'messages' property
+            obj[key] = {
+              messages: Array.from(context.messages.entries()),
+            };
+            return obj;
+          }, {})
         );
 
         const idMappingsData = JSON.stringify(Array.from(idMap.entries()));
@@ -43,8 +45,6 @@ export async function saveConversations(
           writeFile(conversationsFile, conversationsData, "utf-8"),
           writeFile(idMapFile, idMappingsData, "utf-8"),
         ]);
-
-        console.log(`Data saved successfully for server ${serverId}.`);
       }
     }
     updatedServers.clear(); // Reset the tracker after saving
@@ -53,17 +53,6 @@ export async function saveConversations(
   }
 }
 
-type ConversationsStructure = {
-  [key: string]: {
-    messages: [string, ChatMessage][];
-  };
-};
-
-export function markServerAsUpdated(serverId: string) {
-  updatedServers.add(serverId);
-}
-
-// TODO: FIX CAUSE IT DOESNT WORK ON RELOAD IDK WHY
 async function loadConversations(
   serverId: string,
   conversationHistories: Map<string, Map<string, ConversationContext>>,
@@ -73,29 +62,35 @@ async function loadConversations(
   const conversationsFile = join(serverDir, "conversations.json");
   const idMapFile = join(serverDir, "idMap.json");
 
-  // Ensure the server-specific directory exists
   await ensureDirectoryExists(serverDir);
 
-  // Load or initialize conversation data
   try {
-    const conversationsData = JSON.parse(
-      await fs.readFile(conversationsFile, "utf-8")
+    const conversationsData: {
+      [key: string]: {
+        messages: [string, ChatMessage][];
+      };
+    } = JSON.parse(await fs.readFile(conversationsFile, "utf-8"));
+    const idMapData: [string, string][] = JSON.parse(
+      await fs.readFile(idMapFile, "utf-8")
     );
-    const idMapData = JSON.parse(await fs.readFile(idMapFile, "utf-8"));
 
-    conversationHistories.set(
-      serverId,
-      new Map(conversationsData as [string, ConversationContext][])
-    );
-    conversationIdMap.set(serverId, new Map(idMapData as [string, string][]));
-    console.log(`Data loaded successfully for server ${serverId}`);
+    const newConversationMap = new Map<string, ConversationContext>();
+    Object.entries(conversationsData).forEach(([key, value]) => {
+      if (value.messages) {
+        newConversationMap.set(key, { messages: new Map(value.messages) });
+      }
+    });
+    conversationHistories.set(serverId, newConversationMap);
+
+    const newIDMap = new Map(idMapData);
+    conversationIdMap.set(serverId, newIDMap);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      // If no data, initialize empty maps
+      console.log(
+        `No data found for server ${serverId}. Initialising new files.`
+      );
       conversationHistories.set(serverId, new Map());
       conversationIdMap.set(serverId, new Map());
-
-      console.log(`Initialized new data structures for server ${serverId}`);
     } else {
       console.error(`Failed to load data for server ${serverId}:`, error);
       throw error;
@@ -108,7 +103,6 @@ async function ensureDirectoryExists(directoryPath: string) {
     await fs.access(directoryPath);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      console.log(`Creating directory: ${directoryPath}`);
       await fs.mkdir(directoryPath, { recursive: true });
     } else {
       throw error;
@@ -116,9 +110,6 @@ async function ensureDirectoryExists(directoryPath: string) {
   }
 }
 
-// Function to load conversations for a given server
-
-// Ensure file existence for all servers
 export async function ensureFileExists(
   serverIds: string[],
   conversationHistories: Map<string, Map<string, ConversationContext>>,
@@ -129,4 +120,8 @@ export async function ensureFileExists(
       loadConversations(serverId, conversationHistories, conversationIdMap)
     )
   );
+}
+
+export function markServerAsUpdated(serverId: string) {
+  updatedServers.add(serverId);
 }
