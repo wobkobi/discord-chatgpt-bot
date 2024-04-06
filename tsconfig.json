@@ -2,17 +2,17 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "outDir": "build",
-    "rootDir": "src",
+    "outDir": "./build",
+    "rootDir": "./src",
     "strict": true,
-    "moduleResolution": "Node",
+    "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
-
     "experimentalDecorators": true,
     "emitDecoratorMetadata": false,
-
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true
   },
-  "exclude": ["build", "node_modules"]
+  "include": ["src"],
+  "exclude": ["build", "node_modules", "**/*.spec.ts"]
 }

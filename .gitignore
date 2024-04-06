@@ -9,4 +9,4 @@ yarn.lock
 build
 node_modules
 .eslintcache
-conversationHistories.json
+data/*

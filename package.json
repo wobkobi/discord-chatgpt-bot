@@ -4,12 +4,12 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "main": "build/main.js",
+  "main": "build/index.js",
   "scripts": {
     "build": "tsc",
     "build:changelog": "npx @discordx/changelog --src src",
-    "dev": "node --loader ts-node/esm/transpile-only src/main.ts",
-    "start": "tsc && node build/main.js",
+    "dev": "node --loader ts-node/esm/transpile-only src/index.ts",
+    "start": "tsc && node build/index.js",
     "watch": "nodemon --exec npm run dev --watch src --ext ts"
   },
   "dependencies": {
@@ -25,7 +25,6 @@
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
-    "eslint-config-standard-with-typescript": "^43.0.1",
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-n": "^16.6.2",
     "eslint-plugin-prettier": "^5.1.3",
@@ -33,7 +32,7 @@
     "husky": "^9.0.11",
     "lint-staged": "^15.2.2",
     "nodemon": "^3.1.0",
-    "prettier": "^3.1.1",
+    "prettier": "^3.2.5",
     "prettier-plugin-organize-imports": "^3.2.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.3"
