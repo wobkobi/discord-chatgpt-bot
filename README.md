@@ -1,99 +1,63 @@
-<div>
-  <p align="center">
-    <a href="https://discordx.js.org" target="_blank" rel="nofollow">
-      <img src="https://discordx.js.org/discordx.svg" width="546" />
-    </a>
-  </p>
-  <p align="center">
-    <a href="https://discordx.js.org/discord"
-      ><img
-        src="https://img.shields.io/discord/874802018361950248?color=5865F2&logo=discord&logoColor=white"
-        alt="Discord server"
-    /></a>
-    <a href="https://www.npmjs.com/package/discordx"
-      ><img
-        src="https://img.shields.io/npm/v/discordx.svg?maxAge=3600"
-        alt="NPM version"
-    /></a>
-    <a href="https://www.npmjs.com/package/discordx"
-      ><img
-        src="https://img.shields.io/npm/dt/discordx.svg?maxAge=3600"
-        alt="NPM downloads"
-    /></a>
-    <a href="https://github.com/discordx-ts/discordx/actions"
-      ><img
-        src="https://github.com/discordx-ts/discordx/workflows/Build/badge.svg"
-        alt="Build status"
-    /></a>
-    <a href="https://www.paypal.me/vijayxmeena"
-      ><img
-        src="https://img.shields.io/badge/donate-paypal-F96854.svg"
-        alt="paypal"
-    /></a>
-  </p>
-  <p align="center">
-    <b> Create a discord bot with TypeScript and Decorators! </b>
-  </p>
-</div>
+### README for Discord Bot
 
-# 📖 Introduction
+#### Overview
 
-A blank template with one command and one event, This is a useful template if you want to quickly spin up a project.
+This Discord bot is designed to integrate OpenAI's powerful GPT-3.5 model, providing users with interactive, AI-driven responses. It's built to handle chat completions, offer concise replies, and adapt to conversation contexts dynamically.
 
-# 🏗 Development
+#### Features
 
-```
-npm install
-npm run dev
-```
+- **AI Conversations**: Engage in natural, flowing dialogues powered by OpenAI's GPT-3.5.
+- **Context Management**: Maintains conversation history to provide relevant responses.
+- **Customizable Responses**: Adjust reply length and style via settings.
 
-If you want to use [Nodemon](https://nodemon.io/) to auto-reload while in development:
+#### Prerequisites
 
-```
-npm run watch
-```
+- Node.js
+- Discord.js library
+- OpenAI API key
 
-# 💻 Production
+#### Setup
+
+1. **Clone the Repository**
+
+   ```bash
+   git clone https://github.com/wobkobi/chatgpt-x-discord.git
+   cd chatgpt-x-discord
+   ```
+
+2. **Install Dependencies**
+
+   ```bash
+   npm install
+   ```
+
+3. **Configure Environment**
+   Create a `.env` file in the root directory and add your Discord Bot Token and OpenAI API Key:
+
+   ```
+   BOT_TOKEN=your_discord_bot_token
+   OPENAI_API_KEY=your_openai_api_key
+   ```
+
+4. **Run the Bot**
+   ```bash
+   npm run start
+   ```
+
+#### Usage
+
+Invite the bot to your Discord server and interact with it using mentions. For example:
 
 ```
-npm install --production
-npm run build
-npm run start
+@BotName How's the weather today?
 ```
 
-# 🐋 Docker
+The bot will reply based on its AI capabilities and the parameters set for conversation length and complexity.
 
-To start your application:
+#### Support
 
-```
-docker-compose up -d
-```
+For support, please open an issue on the GitHub repository page.
 
-To shut down your application:
+### Conclusion
 
-```
-docker-compose down
-```
-
-To view your application's logs:
-
-```
-docker-compose logs
-```
-
-For the full command list please view the [Docker Documentation](https://docs.docker.com/engine/reference/commandline/cli/).
-
-# 📜 Documentation
-
-- [discordx.js.org](https://discordx.js.org)
-- [Tutorials (dev.to)](https://dev.to/samarmeena/series/14317)
-
-# ☎️ Need help?
-
-- [Check frequently asked questions](https://discordx.js.org/docs/faq)
-- [Check examples](https://github.com/discordx-ts/discordx/tree/main/packages/discordx/examples)
-- Ask in the community [Discord server](https://discordx.js.org/discord)
-
-# 💖 Thank you
-
-You can support [discordx](https://www.npmjs.com/package/discordx) by giving it a [GitHub](https://github.com/discordx-ts/discordx) star.
+This bot offers a simple yet powerful way to add AI-driven interactions to your Discord server. Customize it to fit your needs and enjoy the advanced capabilities of GPT-3.5 in your community.
