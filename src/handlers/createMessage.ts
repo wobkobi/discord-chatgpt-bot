@@ -61,7 +61,11 @@ export async function handleNewMessage(openai: OpenAI, client: Client) {
     cooldownSet.add(contextId);
     setTimeout(() => cooldownSet.delete(contextId), cooldownTime);
 
-    const newMessage = createChatMessage(message, "user");
+    const newMessage = createChatMessage(
+      message,
+      "user",
+      client.user?.username
+    );
 
     conversationContext.messages.set(message.id, newMessage);
     guildConversationIds.set(message.id, contextId);
@@ -73,7 +77,9 @@ export async function handleNewMessage(openai: OpenAI, client: Client) {
         openai
       );
       const sentMessage = await message.reply(replyContent);
-      const botMessage = createChatMessage(sentMessage, "assistant");
+      // get bot name from client
+      const botName = client.user?.username;
+      const botMessage = createChatMessage(sentMessage, "assistant", botName);
 
       conversationContext.messages.set(sentMessage.id, botMessage);
       guildConversationIds.set(sentMessage.id, contextId);
@@ -112,12 +118,16 @@ function getContextId(
 
 function createChatMessage(
   message: Message,
-  role: "user" | "assistant"
+  role: "user" | "assistant",
+  botName?: string
 ): ChatMessage {
   return {
     id: message.id,
-    role: role,
-    name: role === "user" ? sanitiseUsername(message.author.username) : "Bot",
+    role,
+    name:
+      role === "user"
+        ? sanitiseUsername(message.author.username)
+        : botName || "Bot",
     content: message.content,
     replyToId: message.reference?.messageId,
   };
@@ -154,7 +164,7 @@ async function generateReply(
       model: "gpt-3.5-turbo",
       messages: context,
       temperature: 0.5,
-      top_p: 0.9,
+      top_p: 0.6,
       frequency_penalty: 0.5,
     });
 
