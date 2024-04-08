@@ -29,8 +29,10 @@ export async function handleNewMessage(openai: OpenAI, client: Client) {
     }
 
     if (!message.guild) return;
-
     const guildId = message.guild.id;
+    const channel = message.channel;
+
+    channel.sendTyping();
 
     markServerAsUpdated(guildId);
 
@@ -151,6 +153,9 @@ async function generateReply(
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: context,
+      temperature: 0.5,
+      top_p: 0.9,
+      frequency_penalty: 0.5,
     });
 
     const replyContent = response.choices[0]?.message.content;
