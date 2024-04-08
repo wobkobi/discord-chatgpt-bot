@@ -9,8 +9,6 @@ import {
 } from "../utils/file.js";
 
 const cooldownSet = new Set();
-
-// 5 seconds cooldown between messages
 const cooldownTime = 5000;
 
 const conversationHistories: Map<
@@ -21,77 +19,86 @@ const conversationIdMap: Map<string, Map<string, string>> = new Map();
 
 export async function handleNewMessage(openai: OpenAI, client: Client) {
   return async function (message: Message<boolean>) {
-    if (shouldIgnoreMessage(message, client)) {
+    if (!message.guild || shouldIgnoreMessage(message, client)) {
       if (message.mentions.everyone) {
         await message.reply("I don't care");
       }
       return;
     }
 
-    if (!message.guild) return;
-    const guildId = message.guild.id;
+    const guildId = message.guild?.id;
+
+    initialiseGuildData(guildId);
+
     const channel = message.channel;
 
     channel.sendTyping();
 
-    markServerAsUpdated(guildId);
-
-    if (!conversationHistories.has(guildId)) {
-      conversationHistories.set(guildId, new Map());
-      conversationIdMap.set(guildId, new Map());
-    }
-
-    const guildConversations = conversationHistories.get(guildId)!;
-    const guildConversationIds = conversationIdMap.get(guildId)!;
-
-    const contextId = getContextId(message, guildConversationIds);
-    const conversationContext = guildConversations.get(contextId) || {
-      messages: new Map(),
-    };
-
-    guildConversations.set(contextId, conversationContext);
-
-    if (cooldownSet.has(contextId)) {
-      await message.reply(
-        "Please wait a few seconds before asking another question."
-      );
-      return;
-    }
-
-    cooldownSet.add(contextId);
-    setTimeout(() => cooldownSet.delete(contextId), cooldownTime);
-
-    const newMessage = createChatMessage(
-      message,
-      "user",
-      client.user?.username
-    );
-
-    conversationContext.messages.set(message.id, newMessage);
-    guildConversationIds.set(message.id, contextId);
-
-    try {
-      const replyContent = await generateReply(
-        conversationContext.messages,
-        message.id,
-        openai
-      );
-      const sentMessage = await message.reply(replyContent);
-      // get bot name from client
-      const botName = client.user?.username;
-      const botMessage = createChatMessage(sentMessage, "assistant", botName);
-
-      conversationContext.messages.set(sentMessage.id, botMessage);
-      guildConversationIds.set(sentMessage.id, contextId);
-
-      await saveConversations(conversationHistories, conversationIdMap); // Save less frequently or debounce
-    } catch (error) {
-      console.error("Failed to process message:", error);
-      const errorMessage =
-        "Sorry, I encountered an error while processing your request.";
-      await message.reply(errorMessage);
-    }
+    processMessage(client, message, guildId, openai);
   };
+}
+
+async function processMessage(
+  client: Client,
+  message: Message<boolean>,
+  guildId: string,
+  openai: OpenAI
+) {
+  const contextId = getContextId(message, conversationIdMap.get(guildId)!);
+
+  if (cooldownSet.has(contextId)) {
+    await message.reply(
+      "Please wait a few seconds before asking another question."
+    );
+    return;
+  }
+
+  manageCooldown(contextId);
+
+  const guildConversations = conversationHistories.get(guildId)!;
+  const guildConversationIds = conversationIdMap.get(guildId)!;
+
+  const conversationContext = guildConversations.get(contextId) || {
+    messages: new Map(),
+  };
+
+  guildConversations.set(contextId, conversationContext);
+
+  const newMessage = createChatMessage(message, "user", client.user?.username);
+
+  conversationContext.messages.set(message.id, newMessage);
+  guildConversationIds.set(message.id, contextId);
+
+  try {
+    const replyContent = await generateReply(
+      conversationContext.messages,
+      message.id,
+      openai
+    );
+    const sentMessage = await message.reply(replyContent);
+    // get bot name from client
+    const botName = client.user?.username;
+    const botMessage = createChatMessage(sentMessage, "assistant", botName);
+
+    conversationContext.messages.set(sentMessage.id, botMessage);
+    guildConversationIds.set(sentMessage.id, contextId);
+
+    await saveConversations(conversationHistories, conversationIdMap);
+  } catch (error) {
+    handleError(message, error);
+  }
+}
+
+function manageCooldown(contextId: string) {
+  cooldownSet.add(contextId);
+  setTimeout(() => cooldownSet.delete(contextId), cooldownTime);
+}
+
+async function handleError(message: Message<boolean>, error: unknown) {
+  console.error("Failed to process message:", error);
+  await message.reply(
+    "Sorry, I encountered an error while processing your request."
+  );
 }
 
 function shouldIgnoreMessage(message: Message, client: Client): boolean {
@@ -103,6 +110,14 @@ function shouldIgnoreMessage(message: Message, client: Client): boolean {
     message.mentions.everyone || // Message mentions everyone (@everyone or @here)
     !message.mentions.has(client.user.id) // Message does not specifically mention this bot
   );
+}
+
+function initialiseGuildData(guildId: string) {
+  if (!conversationHistories.has(guildId)) {
+    conversationHistories.set(guildId, new Map());
+    conversationIdMap.set(guildId, new Map());
+  }
+  markServerAsUpdated(guildId);
 }
 
 //
@@ -163,7 +178,6 @@ async function generateReply(
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: context,
-      temperature: 0.5,
       top_p: 0.6,
       frequency_penalty: 0.5,
     });

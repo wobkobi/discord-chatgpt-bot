@@ -2,6 +2,7 @@ import { Client, GatewayIntentBits } from "discord.js";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import { handleNewMessage, run } from "./handlers/createMessage.js";
+
 dotenv.config();
 
 const client = new Client({
