@@ -9,7 +9,10 @@ const DATA_DIRECTORY = "./data";
 
 const updatedServers = new Set<string>(); // Tracks which server IDs need saving
 
-const ENCRYPTION_KEY = Buffer.from("Crazy?IWasCrazyOnce.TheyLockedMe", "utf-8");
+const ENCRYPTION_KEY = Buffer.from(
+  process.env.ENCRYPTION_KEY || "Crazy?IWasCrazyOnce.TheyLockedMe",
+  "utf-8"
+);
 const IV_LENGTH = 16;
 
 export async function saveConversations(
