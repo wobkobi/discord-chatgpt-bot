@@ -176,7 +176,7 @@ async function generateReply(
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4",
       messages: context,
       top_p: 0.6,
       frequency_penalty: 0.5,

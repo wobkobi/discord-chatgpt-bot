@@ -1,3 +1,4 @@
+import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 import { promises as fs } from "fs";
 import { writeFile } from "fs/promises";
 import { join } from "path";
@@ -7,6 +8,12 @@ import ConversationContext from "../types/conversationContext.js";
 const DATA_DIRECTORY = "./data";
 
 const updatedServers = new Set<string>(); // Tracks which server IDs need saving
+
+const ENCRYPTION_KEY = Buffer.from(
+  process.env.ENCRYPTION_KEY || "Crazy?IWasCrazyOnce.TheyLockedMe",
+  "utf-8"
+);
+const IV_LENGTH = 16;
 
 export async function saveConversations(
   conversationHistories: Map<string, Map<string, ConversationContext>>,
@@ -38,12 +45,12 @@ export async function saveConversations(
 
         const idMappingsData = JSON.stringify(Array.from(idMap.entries()));
 
-        const conversationsFile = `${serverDataPath}/conversations.json`;
-        const idMapFile = `${serverDataPath}/idMap.json`;
+        const conversationsFile = `${serverDataPath}/conversations.bin`;
+        const idMapFile = `${serverDataPath}/idMap.bin`;
 
         await Promise.all([
-          writeFile(conversationsFile, conversationsData, "utf-8"),
-          writeFile(idMapFile, idMappingsData, "utf-8"),
+          writeFile(conversationsFile, encrypt(conversationsData), "utf-8"),
+          writeFile(idMapFile, encrypt(idMappingsData), "utf-8"),
         ]);
       }
     }
@@ -59,8 +66,8 @@ async function loadConversations(
   conversationIdMap: Map<string, Map<string, string>>
 ) {
   const serverDir = join(DATA_DIRECTORY, serverId);
-  const conversationsFile = join(serverDir, "conversations.json");
-  const idMapFile = join(serverDir, "idMap.json");
+  const conversationsFile = join(serverDir, "conversations.bin");
+  const idMapFile = join(serverDir, "idMap.bin");
 
   await ensureDirectoryExists(serverDir);
 
@@ -69,9 +76,9 @@ async function loadConversations(
       [key: string]: {
         messages: [string, ChatMessage][];
       };
-    } = JSON.parse(await fs.readFile(conversationsFile, "utf-8"));
+    } = JSON.parse(decrypt(await fs.readFile(conversationsFile, "utf-8")));
     const idMapData: [string, string][] = JSON.parse(
-      await fs.readFile(idMapFile, "utf-8")
+      decrypt(await fs.readFile(idMapFile, "utf-8"))
     );
 
     const newConversationMap = new Map<string, ConversationContext>();
@@ -96,6 +103,24 @@ async function loadConversations(
       throw error;
     }
   }
+}
+
+function encrypt(text: string): string {
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
+  let encrypted = cipher.update(text);
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  return iv.toString("hex") + ":" + encrypted.toString("hex");
+}
+
+function decrypt(text: string): string {
+  const textParts = text.split(":");
+  const iv = Buffer.from(textParts[0], "hex");
+  const encryptedText = Buffer.from(textParts[1], "hex");
+  const decipher = createDecipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
+  let decrypted = decipher.update(encryptedText);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  return decrypted.toString();
 }
 
 async function ensureDirectoryExists(directoryPath: string) {
