@@ -17,12 +17,12 @@ const conversationHistories: Map<
 > = new Map();
 const conversationIdMap: Map<string, Map<string, string>> = new Map();
 
+// change this to the description of the character you want to use
+const characterDescription = `You are Allan Red. Allan is a tall red critter with long, thin limbs and a slouched oblong body. He has a prominent nose, large almond-shaped eyes, and a slight overbite. Allan usually wears a light blue necktie. He is generally uptight and deadpan, often playing the role of the straight man when it comes to the antics of other characters. He is something of a neat freak and has a love for cheese. Allan tends to get impatient quickly and can be highly organized and somewhat eccentric. He obsessively keeps track of his things and prioritizes company objectives. Compared to Pim’s optimism and Charlie’s cynicism, Allan's priorities are more self-centered regarding his duties as a Smiling Friends employee. Allan lives in an apartment complex and keeps worms for composting in the office fridge. He is highly organized and possibly handles accounting or inventory for Smiling Friends Inc. Allan is respectful to his employer, The Boss, but often shows impatience towards his coworkers, including Pim and Glep.`;
+
 export async function handleNewMessage(openai: OpenAI, client: Client) {
   return async function (message: Message<boolean>) {
     if (!message.guild || shouldIgnoreMessage(message, client)) {
-      if (message.mentions.everyone) {
-        await message.reply("I don't care");
-      }
       return;
     }
 
@@ -120,7 +120,6 @@ function initialiseGuildData(guildId: string) {
   markServerAsUpdated(guildId);
 }
 
-//
 function getContextId(
   message: Message,
   conversationIdMap: Map<string, string>
@@ -176,10 +175,17 @@ async function generateReply(
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: context,
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: characterDescription.trim(),
+        },
+        ...context,
+      ],
       top_p: 0.6,
       frequency_penalty: 0.5,
+      max_tokens: 2000,
     });
 
     const replyContent = response.choices[0]?.message.content;
