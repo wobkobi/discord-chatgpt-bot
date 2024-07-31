@@ -1,24 +1,24 @@
 import { Client, Message } from "discord.js";
 import OpenAI, { APIError } from "openai";
-import ChatMessage from "../types/chatMessage.js";
-import ConversationContext from "../types/conversationContext.js";
+import characterDescription from "../data/characterDescription";
+import { ChatMessage, ConversationContext } from "../types/types";
+import {
+  isCooldownActive,
+  manageCooldown,
+  useCooldown,
+} from "../utils/cooldown";
 import {
   ensureFileExists,
   markServerAsUpdated,
   saveConversations,
-} from "../utils/file.js";
-
-const cooldownSet = new Set();
-const cooldownTime = 5000;
+  saveErrorToFile,
+} from "../utils/fileUtils";
 
 const conversationHistories: Map<
   string,
   Map<string, ConversationContext>
 > = new Map();
 const conversationIdMap: Map<string, Map<string, string>> = new Map();
-
-// change this to the description of the character you want to use
-const characterDescription = `You are Allan Red. Allan is a tall red critter with long, thin limbs and a slouched oblong body. He has a prominent nose, large almond-shaped eyes, and a slight overbite. Allan usually wears a light blue necktie. He is generally uptight and deadpan, often playing the role of the straight man when it comes to the antics of other characters. He is something of a neat freak and has a love for cheese. Allan tends to get impatient quickly and can be highly organized and somewhat eccentric. He obsessively keeps track of his things and prioritizes company objectives. Compared to Pim’s optimism and Charlie’s cynicism, Allan's priorities are more self-centered regarding his duties as a Smiling Friends employee. Allan lives in an apartment complex and keeps worms for composting in the office fridge. He is highly organized and possibly handles accounting or inventory for Smiling Friends Inc. Allan is respectful to his employer, The Boss, but often shows impatienc  e towards his coworkers, including Pim and Glep.`;
 
 export async function handleNewMessage(openai: OpenAI, client: Client) {
   return async function (message: Message<boolean>) {
@@ -46,14 +46,16 @@ async function processMessage(
 ) {
   const contextId = getContextId(message, conversationIdMap.get(guildId)!);
 
-  if (cooldownSet.has(contextId)) {
+  if (useCooldown && isCooldownActive(contextId)) {
     await message.reply(
       "Please wait a few seconds before asking another question."
     );
     return;
   }
 
-  manageCooldown(contextId);
+  if (useCooldown) {
+    manageCooldown(contextId);
+  }
 
   const guildConversations = conversationHistories.get(guildId)!;
   const guildConversationIds = conversationIdMap.get(guildId)!;
@@ -76,7 +78,6 @@ async function processMessage(
       openai
     );
     const sentMessage = await message.reply(replyContent);
-    // get bot name from client
     const botName = client.user?.username;
     const botMessage = createChatMessage(sentMessage, "assistant", botName);
 
@@ -89,26 +90,21 @@ async function processMessage(
   }
 }
 
-function manageCooldown(contextId: string) {
-  cooldownSet.add(contextId);
-  setTimeout(() => cooldownSet.delete(contextId), cooldownTime);
-}
-
 async function handleError(message: Message<boolean>, error: unknown) {
   console.error("Failed to process message:", error);
   await message.reply(
     "Sorry, I encountered an error while processing your request."
   );
+  saveErrorToFile(error);
 }
 
 function shouldIgnoreMessage(message: Message, client: Client): boolean {
-  // Check if the message is from a bot, lacks content, mentions everyone, or doesn't mention the bot specifically
   return (
-    message.author.bot || // Message is from another bot
-    !client.user || // Bot client user isn't correctly initialised
-    !message.content || // Message has no content
-    message.mentions.everyone || // Message mentions everyone (@everyone or @here)
-    !message.mentions.has(client.user.id) // Message does not specifically mention this bot
+    message.author.bot ||
+    !client.user ||
+    !message.content ||
+    message.mentions.everyone ||
+    !message.mentions.has(client.user.id)
   );
 }
 
@@ -151,7 +147,7 @@ function sanitiseUsername(username: string): string {
   const cleanUsername = username
     .replace(/[^a-zA-Z0-9_-]/g, "_")
     .substring(0, 64);
-  return cleanUsername || "unknown_user"; // Default username if empty
+  return cleanUsername || "unknown_user";
 }
 
 async function generateReply(
@@ -159,8 +155,8 @@ async function generateReply(
   currentMessageId: string,
   openai: OpenAI
 ): Promise<string> {
-  const context: { role: "user" | "assistant"; content: string }[] = []; // Explicitly declare the type of context array
-  let currentId: string | undefined = currentMessageId; // Now explicitly allowing undefined
+  const context: { role: "user" | "assistant"; content: string }[] = [];
+  let currentId: string | undefined = currentMessageId;
 
   while (currentId) {
     const message = messages.get(currentId);
@@ -170,7 +166,7 @@ async function generateReply(
       role: message.role,
       content: message.content,
     });
-    currentId = message.replyToId; // It's fine for currentId to be undefined
+    currentId = message.replyToId;
   }
 
   try {
@@ -204,15 +200,11 @@ async function generateReply(
 
 export async function run(client: Client) {
   try {
-    // Retrieve list of server IDs from the client guilds if dynamically determining
     const serverIds = Array.from(client.guilds.cache.keys());
-
-    // Ensure files and directories exist for each server
     await ensureFileExists(serverIds, conversationHistories, conversationIdMap);
-
     console.log("Bot is ready.");
   } catch (error) {
     console.error("Failed to initialise conversations:", error);
-    process.exit(1); // Exit if the setup fails critically
+    process.exit(1);
   }
 }
