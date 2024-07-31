@@ -1,18 +1,18 @@
 import { Client, Message } from "discord.js";
 import OpenAI, { APIError } from "openai";
-import characterDescription from "../data/characterDescription";
-import { ChatMessage, ConversationContext } from "../types/types";
+import characterDescription from "../data/characterDescription.js";
+import { ChatMessage, ConversationContext } from "../types/types.js";
 import {
   isCooldownActive,
   manageCooldown,
   useCooldown,
-} from "../utils/cooldown";
+} from "../utils/cooldown.js";
 import {
   ensureFileExists,
   markServerAsUpdated,
   saveConversations,
   saveErrorToFile,
-} from "../utils/fileUtils";
+} from "../utils/fileUtils.js";
 
 const conversationHistories: Map<
   string,

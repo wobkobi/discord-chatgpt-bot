@@ -1,14 +1,14 @@
-const cooldownSet = new Set<string>();
+import { config } from "../config.js";
 
-// 2.5 seconds
-const cooldownTime = 2500;
-export const useCooldown = true;
+const cooldownSet = new Set<string>();
 
 export function manageCooldown(contextId: string) {
   cooldownSet.add(contextId);
-  setTimeout(() => cooldownSet.delete(contextId), cooldownTime);
+  setTimeout(() => cooldownSet.delete(contextId), config.cooldownTime);
 }
 
 export function isCooldownActive(contextId: string): boolean {
   return cooldownSet.has(contextId);
 }
+
+export const useCooldown = config.useCooldown;
