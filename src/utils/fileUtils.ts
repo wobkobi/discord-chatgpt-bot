@@ -1,9 +1,8 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
-import { promises as fs } from "fs";
+import fs from "fs";
 import { writeFile } from "fs/promises";
-import { join } from "path";
-import ChatMessage from "../types/chatMessage.js";
-import ConversationContext from "../types/conversationContext.js";
+import path, { join } from "path";
+import { ChatMessage, ConversationContext } from "../types/types.js";
 
 const DATA_DIRECTORY = "./data";
 
@@ -13,6 +12,8 @@ const ENCRYPTION_KEY = Buffer.from(
   process.env.ENCRYPTION_KEY || "Crazy?IWasCrazyOnce.TheyLockedMe",
   "utf-8"
 );
+
+// The IV is a random 16-byte buffer that is used to ensure that the same plaintext does not encrypt to the same ciphertext
 const IV_LENGTH = 16;
 
 export async function saveConversations(
@@ -76,9 +77,11 @@ async function loadConversations(
       [key: string]: {
         messages: [string, ChatMessage][];
       };
-    } = JSON.parse(decrypt(await fs.readFile(conversationsFile, "utf-8")));
+    } = JSON.parse(
+      decrypt(await fs.promises.readFile(conversationsFile, "utf-8"))
+    );
     const idMapData: [string, string][] = JSON.parse(
-      decrypt(await fs.readFile(idMapFile, "utf-8"))
+      decrypt(await fs.promises.readFile(idMapFile, "utf-8"))
     );
 
     const newConversationMap = new Map<string, ConversationContext>();
@@ -125,10 +128,10 @@ function decrypt(text: string): string {
 
 async function ensureDirectoryExists(directoryPath: string) {
   try {
-    await fs.access(directoryPath);
+    await fs.promises.access(directoryPath);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      await fs.mkdir(directoryPath, { recursive: true });
+      await fs.promises.mkdir(directoryPath, { recursive: true });
     } else {
       throw error;
     }
@@ -149,4 +152,26 @@ export async function ensureFileExists(
 
 export function markServerAsUpdated(serverId: string) {
   updatedServers.add(serverId);
+}
+
+export function saveErrorToFile(error: unknown) {
+  const errorsFolderPath = path.resolve("errors");
+  const currentDate = new Date().toISOString().split("T")[0];
+  const errorLogPath = path.join(errorsFolderPath, `error-${currentDate}.log`);
+
+  if (!fs.existsSync(errorsFolderPath)) {
+    fs.mkdirSync(errorsFolderPath);
+  }
+
+  const errorMessage = `${new Date().toISOString()} - ${
+    error instanceof Error ? error.stack : error
+  }\n`;
+
+  fs.appendFile(errorLogPath, errorMessage, (err) => {
+    if (err) {
+      console.error("Failed to write error to file:", err);
+    } else {
+      console.log(`Error saved to ${errorLogPath}`);
+    }
+  });
 }
