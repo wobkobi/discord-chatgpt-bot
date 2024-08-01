@@ -15,12 +15,7 @@
       }
     ],
     "linebreak-style": ["error", "unix"],
-    "@typescript-eslint/consistent-type-definitions": [
-      "error",
-      {
-        "type": "object"
-      }
-    ]
+    "@typescript-eslint/consistent-type-definitions": "error"
   },
   "parserOptions": {
     "ecmaVersion": 2020,
