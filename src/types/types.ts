@@ -1,11 +1,11 @@
-export type ChatMessage = {
+export interface ChatMessage {
   id?: string;
   role: "user" | "assistant";
   name: string;
   content: string;
   replyToId?: string;
-};
+}
 
-export type ConversationContext = {
+export interface ConversationContext {
   messages: Map<string, ChatMessage>;
-};
+}

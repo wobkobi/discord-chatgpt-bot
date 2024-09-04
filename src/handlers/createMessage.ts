@@ -32,7 +32,9 @@ export async function handleNewMessage(openai: OpenAI, client: Client) {
 
     const channel = message.channel;
 
-    channel.sendTyping();
+    if (channel.isTextBased() && "sendTyping" in channel) {
+      channel.sendTyping();
+    }
 
     processMessage(client, message, guildId, openai);
   };
