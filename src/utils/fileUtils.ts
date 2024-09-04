@@ -8,10 +8,7 @@ const DATA_DIRECTORY = "./data";
 
 const updatedServers = new Set<string>(); // Tracks which server IDs need saving
 
-const ENCRYPTION_KEY = Buffer.from(
-  process.env.ENCRYPTION_KEY || "Crazy?IWasCrazyOnce.TheyLockedMe",
-  "utf-8"
-);
+const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY!, "hex");
 
 // The IV is a random 16-byte buffer that is used to ensure that the same plaintext does not encrypt to the same ciphertext
 const IV_LENGTH = 16;
@@ -110,7 +107,7 @@ async function loadConversations(
 
 function encrypt(text: string): string {
   const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
+  const cipher = createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
   let encrypted = cipher.update(text);
   encrypted = Buffer.concat([encrypted, cipher.final()]);
   return iv.toString("hex") + ":" + encrypted.toString("hex");
@@ -120,7 +117,7 @@ function decrypt(text: string): string {
   const textParts = text.split(":");
   const iv = Buffer.from(textParts[0], "hex");
   const encryptedText = Buffer.from(textParts[1], "hex");
-  const decipher = createDecipheriv("aes-256-cbc", ENCRYPTION_KEY, iv);
+  const decipher = createDecipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
   let decrypted = decipher.update(encryptedText);
   decrypted = Buffer.concat([decrypted, decipher.final()]);
   return decrypted.toString();
