@@ -204,7 +204,6 @@ export async function run(client: Client) {
   try {
     const serverIds = Array.from(client.guilds.cache.keys());
     await ensureFileExists(serverIds, conversationHistories, conversationIdMap);
-    console.log("Bot is ready.");
   } catch (error) {
     console.error("Failed to initialise conversations:", error);
     process.exit(1);
