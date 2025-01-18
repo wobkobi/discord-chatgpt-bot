@@ -1,0 +1,4 @@
+// change this to be the description of your character for the personality of your bot, or just have it empty if you don't want to use it
+const characterDescription = `remove .example and add your character description here`;
+
+export default characterDescription;
