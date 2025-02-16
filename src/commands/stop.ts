@@ -1,4 +1,8 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import {
+  ChatInputCommandInteraction,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "discord.js";
 
 export const data = new SlashCommandBuilder()
   .setName("stop")
@@ -11,7 +15,7 @@ export async function execute(
   if (!ownerId) {
     await interaction.reply({
       content: "Bot owner is not set up.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -19,16 +23,16 @@ export async function execute(
   if (interaction.user.id !== ownerId) {
     await interaction.reply({
       content: "Sorry, not allowed.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
   await interaction.reply({
     content: "Bot is shutting down...",
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 
-  // Give the reply a moment to send before exiting.
+  // Wait a moment to send the reply, then exit.
   setTimeout(() => process.exit(0), 1000);
 }
