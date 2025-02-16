@@ -14,10 +14,11 @@ import { join, resolve } from "path";
 import { pathToFileURL } from "url";
 import { handleNewMessage, run } from "./handlers/createMessage.js";
 import { initializeGeneralMemory } from "./memory/generalMemory.js";
+import { initializeUserMemory } from "./memory/userMemory.js";
 
 dotenv.config();
 
-// Determine commands folder based on whether production build exists.
+// Determine commands folder based on production status.
 const prodCommandsPath = join(resolve(), "build", "commands");
 const devCommandsPath = join(resolve(), "src", "commands");
 const commandsPath = existsSync(prodCommandsPath)
@@ -41,7 +42,7 @@ const client = new Client({
 // Extend the client with a commands collection.
 client.commands = new Collection();
 
-// Dynamically load command files from the determined commands directory.
+// Dynamically load command files.
 const commandFiles = readdirSync(commandsPath).filter((file) =>
   file.endsWith(fileExtension)
 );
@@ -74,12 +75,13 @@ async function registerGlobalCommands(): Promise<void> {
   }
 }
 
-// Set up the "ready" event listener.
+// Ready event: register commands and initialize memory.
 client.once("ready", async () => {
   console.log("Bot is ready.");
-  await registerGlobalCommands(); // Register commands on bot start.
+  await registerGlobalCommands();
   await initializeGeneralMemory();
-  console.log("General memory loaded.");
+  await initializeUserMemory();
+  console.log("Memory initialized.");
   await run(client);
 });
 
@@ -90,10 +92,8 @@ const openai = new OpenAI({
 
 // Listen for message events.
 client.on("messageCreate", async (message) => {
-  // Ignore bot messages.
   if (message.author.bot) return;
-
-  // Process DMs or if the bot is mentioned in a guild.
+  // Process DMs or if bot is mentioned in a guild.
   if (!message.guild) {
     (await handleNewMessage(openai, client))(message);
     return;
