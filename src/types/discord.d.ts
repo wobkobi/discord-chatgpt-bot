@@ -1,4 +1,4 @@
-import { Collection, SlashCommandBuilder } from "discord.js";
+import { Collection, Interaction, SlashCommandBuilder } from "discord.js";
 
 declare module "discord.js" {
   export interface Client {

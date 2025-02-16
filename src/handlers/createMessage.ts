@@ -2,20 +2,16 @@ import { Client, Message } from "discord.js";
 import OpenAI, { APIError } from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat";
 import { getCharacterDescription } from "../data/characterDescription.js";
-import { updateUserMemory, userMemory } from "../memory/userMemory.js";
+import { updateUserMemory, userMemory } from "../memory/userMemory.js"; // <-- Added userMemory import
 import { ChatMessage, ConversationContext } from "../types/types.js";
 import {
   isCooldownActive,
   manageCooldown,
   useCooldown,
 } from "../utils/cooldown.js";
-import {
-  ensureFileExists,
-  markContextAsUpdated,
-  saveConversations,
-} from "../utils/fileUtils.js";
+import { ensureFileExists, markContextAsUpdated } from "../utils/fileUtils.js";
 
-// Conversation maps keyed by a context key (using the user's ID).
+// Conversation maps keyed by a context key (using the user's ID or composite key).
 const conversationHistories: Map<
   string,
   Map<string, ConversationContext>
@@ -24,15 +20,15 @@ const conversationIdMap: Map<string, Map<string, string>> = new Map();
 
 /**
  * Entry point for processing new messages.
- * Uses the user's ID as the key so persistent memory travels across servers and DMs.
+ * Uses the user's ID (or composite key) so persistent memory travels across servers and DMs.
  */
 export async function handleNewMessage(openai: OpenAI, client: Client) {
   return async function (message: Message<boolean>): Promise<void> {
     if (message.author.bot) return;
     const userId = message.author.id;
-    const contextKey = userId; // Use user ID as unified context key.
+    // Use a composite key if needed; here we use just the user ID for simplicity.
+    const contextKey = userId;
     initialiseConversationData(contextKey);
-
     if (message.channel.isTextBased() && "sendTyping" in message.channel) {
       message.channel.sendTyping();
     }
@@ -99,7 +95,12 @@ async function processMessage(
       timestamp: Date.now(),
       content: `Conversation ${contextId} (asked by ${newMsg.name}): ${summary}`,
     });
-    await saveConversations(conversationHistories, conversationIdMap);
+    // Ensure conversation files exist for this context.
+    await ensureFileExists(
+      [contextKey],
+      conversationHistories,
+      conversationIdMap
+    );
   } catch (error: unknown) {
     await handleError(message, error);
   }
@@ -120,6 +121,10 @@ async function handleError(
  * Determines a conversation context ID.
  */
 function getContextId(message: Message, convIds: Map<string, string>): string {
+  // For DMs, return the channel id as the conversation context.
+  if (!message.guild) {
+    return message.channel.id;
+  }
   const replyToId: string | undefined =
     message.reference?.messageId || undefined;
   return replyToId && convIds.has(replyToId)
@@ -195,9 +200,13 @@ async function generateReply(
     currentId = msg.replyToId;
   }
 
-  // Retrieve persistent user memory from the in-memory userMemory map.
+  // Retrieve persistent user memory from the userMemory map.
   const memoryEntries = userMemory.get(contextKey) || [];
-  const memoryContent = memoryEntries.map((entry) => entry.content).join("\n");
+  const memoryContent = memoryEntries
+    .map(
+      (entry: import("../types/types.js").GeneralMemoryEntry) => entry.content
+    )
+    .join("\n");
   if (memoryContent) {
     context.unshift({
       role: "system",
@@ -269,7 +278,6 @@ function initialiseConversationData(key: string): void {
  */
 export async function run(client: Client): Promise<void> {
   try {
-    // For guilds, load conversation files using guild IDs.
     const guildIds: string[] = Array.from(client.guilds.cache.keys());
     await ensureFileExists(guildIds, conversationHistories, conversationIdMap);
   } catch (error: unknown) {

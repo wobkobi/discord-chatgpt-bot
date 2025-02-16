@@ -46,7 +46,6 @@ client.commands = new Collection();
 const commandFiles = readdirSync(commandsPath).filter((file) =>
   file.endsWith(fileExtension)
 );
-
 for (const file of commandFiles) {
   const filePath = join(commandsPath, file);
   const fileUrl = pathToFileURL(filePath).href;
@@ -55,7 +54,6 @@ for (const file of commandFiles) {
     client.commands.set(commandModule.data.name, commandModule);
   }
 }
-
 console.log(`Loaded ${client.commands.size} slash command(s).`);
 
 // Function to register commands globally.
@@ -93,7 +91,7 @@ const openai = new OpenAI({
 // Listen for message events.
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
-  // Process DMs or if bot is mentioned in a guild.
+  // Process DMs or if the bot is mentioned in a guild.
   if (!message.guild) {
     (await handleNewMessage(openai, client))(message);
     return;

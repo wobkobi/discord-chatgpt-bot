@@ -28,10 +28,10 @@ export const GENERAL_MEMORY_DIRECTORY = join(
 export const USER_MEMORY_DIRECTORY = join(BASE_DATA_DIRECTORY, "userMemory");
 export const ERRORS_DIRECTORY = join(BASE_DATA_DIRECTORY, "errors");
 
-// A set to track which contexts (guilds or user keys) have updated conversation histories.
+// A set to track which contexts (guilds or user IDs) have updated conversation histories.
 const updatedContexts: Set<string> = new Set();
 
-// Create a 32-byte encryption key from an environment variable.
+// Create a 32-byte encryption key from the environment variable.
 const ENCRYPTION_KEY_BASE = process.env.ENCRYPTION_KEY_BASE || "";
 if (!ENCRYPTION_KEY_BASE) {
   throw new Error("ENCRYPTION_KEY_BASE environment variable is required.");
@@ -83,7 +83,10 @@ export async function ensureDirectoryExists(
 }
 
 /**
- * Loads conversation histories for a given context key (guild or user) into the provided maps.
+ * For each context key (e.g. guild ID or user ID), load its conversation data.
+ * @param contextKeys Array of context keys.
+ * @param conversationHistories Map storing conversation histories.
+ * @param conversationIdMap Map storing conversation ID mappings.
  */
 export async function ensureFileExists(
   contextKeys: string[],
@@ -91,8 +94,8 @@ export async function ensureFileExists(
   conversationIdMap: Map<string, Map<string, string>>
 ): Promise<void> {
   await Promise.all(
-    contextKeys.map((contextKey: string) =>
-      loadConversations(contextKey, conversationHistories, conversationIdMap)
+    contextKeys.map((key: string) =>
+      loadConversations(key, conversationHistories, conversationIdMap)
     )
   );
 }
@@ -135,14 +138,8 @@ export async function saveConversations(
       const histories = conversationHistories.get(contextKey);
       const idMap = conversationIdMap.get(contextKey);
       if (histories && idMap) {
-        const contextDataPath = join(
-          CONVERSATIONS_DIRECTORY,
-          `${contextKey}.bin`
-        );
-        const idMapPath = join(
-          CONVERSATIONS_DIRECTORY,
-          `${contextKey}-idMap.bin`
-        );
+        const dataPath = join(CONVERSATIONS_DIRECTORY, `${contextKey}.bin`);
+        const idPath = join(CONVERSATIONS_DIRECTORY, `${contextKey}-idMap.bin`);
         const conversationsData = JSON.stringify(
           Array.from(histories.entries()).reduce<{
             [key: string]: { messages: [string, ChatMessage][] };
@@ -153,8 +150,8 @@ export async function saveConversations(
         );
         const idMappingsData = JSON.stringify(Array.from(idMap.entries()));
         await Promise.all([
-          writeFile(contextDataPath, encrypt(conversationsData), "utf-8"),
-          writeFile(idMapPath, encrypt(idMappingsData), "utf-8"),
+          writeFile(dataPath, encrypt(conversationsData), "utf-8"),
+          writeFile(idPath, encrypt(idMappingsData), "utf-8"),
         ]);
       }
     }
@@ -169,22 +166,22 @@ export async function loadConversations(
   conversationHistories: Map<string, Map<string, ConversationContext>>,
   conversationIdMap: Map<string, Map<string, string>>
 ): Promise<void> {
-  const contextDataPath = join(CONVERSATIONS_DIRECTORY, `${contextKey}.bin`);
-  const idMapPath = join(CONVERSATIONS_DIRECTORY, `${contextKey}-idMap.bin`);
-  if (!fs.existsSync(contextDataPath) || !fs.existsSync(idMapPath)) {
+  const dataPath = join(CONVERSATIONS_DIRECTORY, `${contextKey}.bin`);
+  const idPath = join(CONVERSATIONS_DIRECTORY, `${contextKey}-idMap.bin`);
+  if (!fs.existsSync(dataPath) || !fs.existsSync(idPath)) {
     conversationHistories.set(contextKey, new Map());
     conversationIdMap.set(contextKey, new Map());
     return;
   }
   try {
-    const conversationsData = JSON.parse(
-      decrypt(await fs.promises.readFile(contextDataPath, "utf-8"))
+    const convData = JSON.parse(
+      decrypt(await fs.promises.readFile(dataPath, "utf-8"))
     );
     const idMapData: [string, string][] = JSON.parse(
-      decrypt(await fs.promises.readFile(idMapPath, "utf-8"))
+      decrypt(await fs.promises.readFile(idPath, "utf-8"))
     );
     const newConversationMap = new Map<string, ConversationContext>();
-    Object.entries(conversationsData).forEach(([key, value]) => {
+    Object.entries(convData).forEach(([key, value]) => {
       const context = value as { messages: [string, ChatMessage][] };
       if (context.messages) {
         newConversationMap.set(key, { messages: new Map(context.messages) });

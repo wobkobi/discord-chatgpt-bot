@@ -4,7 +4,7 @@ import { loadUserMemory, saveUserMemory } from "../utils/fileUtils.js";
 export let userMemory = new Map<string, GeneralMemoryEntry[]>();
 
 export async function initializeUserMemory(): Promise<void> {
-  // For simplicity, we start with an empty in-memory cache.
+  // Optionally, you could scan USER_MEMORY_DIRECTORY to preload memory.
   userMemory = new Map();
 }
 

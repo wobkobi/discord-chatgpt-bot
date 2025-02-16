@@ -7,7 +7,7 @@ import {
 export let generalMemory = new Map<string, GeneralMemoryEntry[]>();
 
 export async function initializeGeneralMemory(): Promise<void> {
-  // For simplicity, we start with an empty in-memory cache.
+  // Optionally, preload memory here.
   generalMemory = new Map();
 }
 
