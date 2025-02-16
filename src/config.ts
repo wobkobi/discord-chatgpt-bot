@@ -1,6 +1,6 @@
 export const config = {
-  // The character description to use in the conversation context
+  // Whether to use cooldown between messages
   useCooldown: true,
-  // The cooldown time in milliseconds
-  cooldownTime: 2500,
+  // Cooldown time in milliseconds
+  cooldownTime: 1250,
 };

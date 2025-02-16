@@ -2,6 +2,7 @@ import { Client, GatewayIntentBits } from "discord.js";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import { handleNewMessage, run } from "./handlers/createMessage.js";
+import { initializeGeneralMemory } from "./memory/generalMemory.js";
 
 // Load environment variables
 dotenv.config();
@@ -16,7 +17,7 @@ const client = new Client({
 });
 
 // Check for required environment variables
-const requiredEnvVars = ["BOT_TOKEN", "OPENAI_API_KEY"];
+const requiredEnvVars = ["BOT_TOKEN", "OPENAI_API_KEY", "ENCRYPTION_KEY_BASE"];
 const missingEnvVars = requiredEnvVars.filter((envVar) => !process.env[envVar]);
 
 if (missingEnvVars.length) {
@@ -32,9 +33,11 @@ const openai = new OpenAI({
 });
 
 // Set up the 'ready' event listener
-client.once("ready", () => {
+client.once("ready", async () => {
   console.log("Bot is ready.");
-  run(client);
+  await initializeGeneralMemory();
+  console.log("General memory loaded.");
+  await run(client);
 });
 
 // Set up the 'messageCreate' event listener
