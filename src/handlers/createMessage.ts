@@ -1,6 +1,8 @@
 import { Client, Message } from "discord.js";
 import OpenAI, { APIError } from "openai";
-import characterDescription from "../data/characterDescription.js";
+import { ChatCompletionMessageParam } from "openai/resources/chat";
+import { getCharacterDescription } from "../data/characterDescription.js";
+import { generalMemory, updateGeneralMemory } from "../memory/generalMemory.js";
 import { ChatMessage, ConversationContext } from "../types/types.js";
 import {
   isCooldownActive,
@@ -11,7 +13,6 @@ import {
   ensureFileExists,
   markServerAsUpdated,
   saveConversations,
-  saveErrorToFile,
 } from "../utils/fileUtils.js";
 
 const conversationHistories: Map<
@@ -20,18 +21,19 @@ const conversationHistories: Map<
 > = new Map();
 const conversationIdMap: Map<string, Map<string, string>> = new Map();
 
+/**
+ * Sets up a message handler that processes new messages.
+ */
 export async function handleNewMessage(openai: OpenAI, client: Client) {
-  return async function (message: Message<boolean>) {
+  return async function (message: Message<boolean>): Promise<void> {
     if (!message.guild || shouldIgnoreMessage(message, client)) {
       return;
     }
 
-    const guildId = message.guild?.id;
-
+    const guildId: string = message.guild.id;
     initialiseGuildData(guildId);
 
     const channel = message.channel;
-
     if (channel.isTextBased() && "sendTyping" in channel) {
       channel.sendTyping();
     }
@@ -40,13 +42,17 @@ export async function handleNewMessage(openai: OpenAI, client: Client) {
   };
 }
 
+/**
+ * Processes a Discord message and handles conversation context.
+ */
 async function processMessage(
   client: Client,
   message: Message<boolean>,
   guildId: string,
   openai: OpenAI
-) {
-  const contextId = getContextId(message, conversationIdMap.get(guildId)!);
+): Promise<void> {
+  const guildConversationIds = conversationIdMap.get(guildId)!;
+  const contextId: string = getContextId(message, guildConversationIds);
 
   if (useCooldown && isCooldownActive(contextId)) {
     await message.reply(
@@ -60,46 +66,68 @@ async function processMessage(
   }
 
   const guildConversations = conversationHistories.get(guildId)!;
-  const guildConversationIds = conversationIdMap.get(guildId)!;
-
-  const conversationContext = guildConversations.get(contextId) || {
-    messages: new Map(),
-  };
+  const conversationContext: ConversationContext = guildConversations.get(
+    contextId
+  ) || { messages: new Map<string, ChatMessage>() };
 
   guildConversations.set(contextId, conversationContext);
-
-  const newMessage = createChatMessage(message, "user", client.user?.username);
-
-  conversationContext.messages.set(message.id, newMessage);
   guildConversationIds.set(message.id, contextId);
 
+  // Include the userId so we know who is asking.
+  const newMessage: ChatMessage = createChatMessage(
+    message,
+    "user",
+    client.user?.username ?? "Bot"
+  );
+  conversationContext.messages.set(message.id, newMessage);
+
   try {
-    const replyContent = await generateReply(
+    const replyContent: string = await generateReply(
       conversationContext.messages,
       message.id,
-      openai
+      openai,
+      guildId
     );
-    const sentMessage = await message.reply(replyContent);
-    const botName = client.user?.username;
-    const botMessage = createChatMessage(sentMessage, "assistant", botName);
-
+    // Fix any mention formatting issues before sending the reply.
+    const fixedReplyContent = fixMentions(replyContent);
+    const sentMessage = await message.reply(fixedReplyContent);
+    const botName = client.user?.username ?? "Bot";
+    const botMessage: ChatMessage = createChatMessage(
+      sentMessage,
+      "assistant",
+      botName
+    );
     conversationContext.messages.set(sentMessage.id, botMessage);
     guildConversationIds.set(sentMessage.id, contextId);
 
+    // Update general memory with a summary including who asked.
+    const summary = summarizeConversation(conversationContext);
+    const memoryEntry = {
+      timestamp: Date.now(),
+      content: `Conversation ${contextId} (asked by ${newMessage.name} [${newMessage.userId}]): ${summary}`,
+    };
+    await updateGeneralMemory(guildId, memoryEntry);
+
     await saveConversations(conversationHistories, conversationIdMap);
-  } catch (error) {
-    handleError(message, error);
+  } catch (error: unknown) {
+    await handleError(message, error);
   }
 }
 
-async function handleError(message: Message<boolean>, error: unknown) {
+/**
+ * Logs errors and notifies the user.
+ */
+async function handleError(
+  message: Message<boolean>,
+  error: unknown
+): Promise<void> {
   console.error("Failed to process message:", error);
-  await message.reply(
-    "Sorry, I encountered an error while processing your request."
-  );
-  saveErrorToFile(error);
+  await message.reply("An error occurred while processing your request.");
 }
 
+/**
+ * Checks if a message should be ignored.
+ */
 function shouldIgnoreMessage(message: Message, client: Client): boolean {
   return (
     message.author.bot ||
@@ -110,7 +138,10 @@ function shouldIgnoreMessage(message: Message, client: Client): boolean {
   );
 }
 
-function initialiseGuildData(guildId: string) {
+/**
+ * Initializes conversation storage for a guild.
+ */
+function initialiseGuildData(guildId: string): void {
   if (!conversationHistories.has(guildId)) {
     conversationHistories.set(guildId, new Map());
     conversationIdMap.set(guildId, new Map());
@@ -118,16 +149,23 @@ function initialiseGuildData(guildId: string) {
   markServerAsUpdated(guildId);
 }
 
+/**
+ * Determines the context id for a message based on its reference.
+ */
 function getContextId(
   message: Message,
-  conversationIdMap: Map<string, string>
+  guildConversationIds: Map<string, string>
 ): string {
-  const replyToId = message.reference?.messageId;
-  return replyToId && conversationIdMap.has(replyToId)
-    ? conversationIdMap.get(replyToId)!
+  const replyToId: string | undefined =
+    message.reference?.messageId ?? undefined;
+  return replyToId && guildConversationIds.has(replyToId)
+    ? guildConversationIds.get(replyToId)!
     : `${message.channelId}-${message.id}`;
 }
 
+/**
+ * Creates a ChatMessage object from a Discord message.
+ */
 function createChatMessage(
   message: Message,
   role: "user" | "assistant",
@@ -136,15 +174,20 @@ function createChatMessage(
   return {
     id: message.id,
     role,
+    // For user messages, include the author's username and id.
     name:
       role === "user"
         ? sanitiseUsername(message.author.username)
-        : botName || "Bot",
+        : (botName ?? "Bot"),
+    userId: role === "user" ? message.author.id : undefined,
     content: message.content,
-    replyToId: message.reference?.messageId,
+    replyToId: message.reference?.messageId ?? undefined,
   };
 }
 
+/**
+ * Sanitizes a username.
+ */
 function sanitiseUsername(username: string): string {
   const cleanUsername = username
     .replace(/[^a-zA-Z0-9_-]/g, "_")
@@ -152,46 +195,90 @@ function sanitiseUsername(username: string): string {
   return cleanUsername || "unknown_user";
 }
 
+/**
+ * Removes "@" symbols from text.
+ */
+function removeAtSymbols(text: string): string {
+  return text.replace(/@/g, "");
+}
+
+/**
+ * Fixes mention formatting.
+ */
+function fixMentions(content: string): string {
+  return content.replace(/<(?!!@)(\d+)>/g, "<@$1>");
+}
+
+/**
+ * Generates a reply from OpenAI using both conversation context and general memory.
+ */
 async function generateReply(
   messages: Map<string, ChatMessage>,
   currentMessageId: string,
-  openai: OpenAI
+  openai: OpenAI,
+  guildId: string
 ): Promise<string> {
-  const context: { role: "user" | "assistant"; content: string }[] = [];
+  const context: { role: "user" | "assistant" | "system"; content: string }[] =
+    [];
   let currentId: string | undefined = currentMessageId;
 
+  // Traverse the conversation thread backwards.
   while (currentId) {
     const message = messages.get(currentId);
     if (!message) break;
 
+    const sanitizedContent = removeAtSymbols(message.content);
+    const content =
+      message.role === "user"
+        ? `${message.name} (ID: ${message.userId}) asked: ${sanitizedContent}`
+        : removeAtSymbols(message.content);
+
     context.unshift({
       role: message.role,
-      content: message.content,
+      content,
     });
     currentId = message.replyToId;
   }
 
+  // Incorporate general memory from the guild, if available.
+  const generalMemoryEntries = generalMemory.get(guildId) || [];
+  const memoryContent = generalMemoryEntries
+    .map((entry) => entry.content)
+    .join("\n");
+  if (memoryContent) {
+    context.unshift({
+      role: "system",
+      content: `Long-term memory:\n${memoryContent}`,
+    });
+  }
+
+  // Build the final prompt context with the character description.
+  const finalMessages: ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content: getCharacterDescription().trim(),
+    },
+    ...context.map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    })),
+  ];
+
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: characterDescription.trim(),
-        },
-        ...context,
-      ],
+      messages: finalMessages,
       top_p: 0.6,
       frequency_penalty: 0.5,
       max_tokens: 2000,
     });
 
-    const replyContent = response.choices[0]?.message.content;
+    const replyContent: string | null = response.choices[0]?.message.content;
     if (!replyContent) {
       throw new Error("Received an empty response from the AI.");
     }
     return replyContent.trim();
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error processing ChatGPT response:", error);
     if (error instanceof APIError && error.code === "insufficient_quota") {
       return "I've reached my limit of wisdom for now. Pay Harrison to get more.";
@@ -200,11 +287,25 @@ async function generateReply(
   }
 }
 
-export async function run(client: Client) {
+/**
+ * Summarizes the conversation context (simple implementation).
+ */
+function summarizeConversation(context: ConversationContext): string {
+  const messages = Array.from(context.messages.values());
+  return messages
+    .slice(-3)
+    .map((msg) => msg.content)
+    .join(" ");
+}
+
+/**
+ * Initializes server data on bot startup.
+ */
+export async function run(client: Client): Promise<void> {
   try {
-    const serverIds = Array.from(client.guilds.cache.keys());
+    const serverIds: string[] = Array.from(client.guilds.cache.keys());
     await ensureFileExists(serverIds, conversationHistories, conversationIdMap);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Failed to initialise conversations:", error);
     process.exit(1);
   }

@@ -4,48 +4,42 @@ import {
   createHash,
   randomBytes,
 } from "crypto";
+import dotenv from "dotenv";
 import fs from "fs";
 import { writeFile } from "fs/promises";
-import path, { join } from "path";
-import { ChatMessage, ConversationContext } from "../types/types.js";
-
-const DATA_DIRECTORY = "./data";
-const updatedServers = new Set<string>(); // Tracks which server IDs need saving
-
-import dotenv from "dotenv";
+import { join } from "path";
+import {
+  ChatMessage,
+  ConversationContext,
+  GeneralMemoryEntry,
+} from "../types/types.js";
 dotenv.config();
 
-// Create a 32-byte encryption key from the environment variable
-const ENCRYPTION_KEY_BASE = process.env.ENCRYPTION_KEY_BASE || "";
+const DATA_DIRECTORY = "./data";
+const updatedServers = new Set<string>();
 
-// Check if the environment variable is provided
+// Create a 32-byte encryption key from the environment variable.
+const ENCRYPTION_KEY_BASE = process.env.ENCRYPTION_KEY_BASE || "";
 if (!ENCRYPTION_KEY_BASE) {
   throw new Error("ENCRYPTION_KEY_BASE environment variable is required.");
 }
-
-// Generate a 32-byte key using SHA-256 hash
 const ENCRYPTION_KEY = createHash("sha256")
   .update(ENCRYPTION_KEY_BASE)
   .digest();
-
-// The IV (Initialization Vector) ensures different ciphertexts for identical plaintext
 const IV_LENGTH = 16;
 
 export async function saveConversations(
   conversationHistories: Map<string, Map<string, ConversationContext>>,
   conversationIdMap: Map<string, Map<string, string>>
-) {
+): Promise<void> {
   try {
     await ensureDirectoryExists(DATA_DIRECTORY);
-
     for (const serverId of updatedServers) {
       const histories = conversationHistories.get(serverId);
       const idMap = conversationIdMap.get(serverId);
-
       if (histories && idMap) {
         const serverDataPath = join(DATA_DIRECTORY, serverId);
         await ensureDirectoryExists(serverDataPath);
-
         const conversationsData = JSON.stringify(
           Array.from(histories.entries()).reduce<{
             [key: string]: { messages: [string, ChatMessage][] };
@@ -54,9 +48,7 @@ export async function saveConversations(
             return obj;
           }, {})
         );
-
         const idMappingsData = JSON.stringify(Array.from(idMap.entries()));
-
         await Promise.all([
           writeFile(
             join(serverDataPath, "conversations.bin"),
@@ -72,7 +64,7 @@ export async function saveConversations(
       }
     }
     updatedServers.clear();
-  } catch (error) {
+  } catch (error: unknown) {
     saveErrorToFile(error);
   }
 }
@@ -81,7 +73,7 @@ export async function loadConversations(
   serverId: string,
   conversationHistories: Map<string, Map<string, ConversationContext>>,
   conversationIdMap: Map<string, Map<string, string>>
-) {
+): Promise<void> {
   const serverDir = join(DATA_DIRECTORY, serverId);
   const conversationsFile = join(serverDir, "conversations.bin");
   const idMapFile = join(serverDir, "idMap.bin");
@@ -96,7 +88,6 @@ export async function loadConversations(
     const conversationsData = JSON.parse(
       decrypt(await fs.promises.readFile(conversationsFile, "utf-8"))
     );
-
     const idMapData: [string, string][] = JSON.parse(
       decrypt(await fs.promises.readFile(idMapFile, "utf-8"))
     );
@@ -109,10 +100,9 @@ export async function loadConversations(
       }
     });
     conversationHistories.set(serverId, newConversationMap);
-
-    const newIDMap = new Map(idMapData);
+    const newIDMap = new Map<string, string>(idMapData);
     conversationIdMap.set(serverId, newIDMap);
-  } catch (error) {
+  } catch (error: unknown) {
     saveErrorToFile(error);
     throw error;
   }
@@ -121,13 +111,9 @@ export async function loadConversations(
 function encrypt(text: string): string {
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
-
   let encrypted = cipher.update(text, "utf8");
   encrypted = Buffer.concat([encrypted, cipher.final()]);
-
   const authTag = cipher.getAuthTag();
-
-  // Return IV, encrypted text, and authentication tag
   return `${iv.toString("hex")}:${encrypted.toString("hex")}:${authTag.toString("hex")}`;
 }
 
@@ -138,25 +124,24 @@ function decrypt(text: string): string {
       "Invalid encrypted text format. Expected 'iv:encryptedData:authTag'."
     );
   }
-
   const iv = Buffer.from(textParts[0], "hex");
   const encryptedText = Buffer.from(textParts[1], "hex");
   const authTag = Buffer.from(textParts[2], "hex");
-
   const decipher = createDecipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
   decipher.setAuthTag(authTag);
-
   let decrypted = decipher.update(encryptedText);
   decrypted = Buffer.concat([decrypted, decipher.final()]);
-
   return decrypted.toString("utf8");
 }
 
-async function ensureDirectoryExists(directoryPath: string) {
+export async function ensureDirectoryExists(
+  directoryPath: string
+): Promise<void> {
   try {
     await fs.promises.access(directoryPath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+  } catch (error: unknown) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === "ENOENT") {
       await fs.promises.mkdir(directoryPath, { recursive: true });
     } else {
       throw error;
@@ -168,7 +153,7 @@ export async function ensureFileExists(
   serverIds: string[],
   conversationHistories: Map<string, Map<string, ConversationContext>>,
   conversationIdMap: Map<string, Map<string, string>>
-) {
+): Promise<void> {
   await Promise.all(
     serverIds.map((serverId) =>
       loadConversations(serverId, conversationHistories, conversationIdMap)
@@ -176,26 +161,60 @@ export async function ensureFileExists(
   );
 }
 
-export function markServerAsUpdated(serverId: string) {
+export function markServerAsUpdated(serverId: string): void {
   updatedServers.add(serverId);
 }
 
-export function saveErrorToFile(error: unknown) {
-  const errorsFolderPath = path.resolve("errors");
+export function saveErrorToFile(error: unknown): void {
+  const errorsFolderPath = join(process.cwd(), "errors");
   const currentDate = new Date().toISOString().split("T")[0];
-  const errorLogPath = path.join(errorsFolderPath, `error-${currentDate}.log`);
-
+  const errorLogPath = join(errorsFolderPath, `error-${currentDate}.log`);
   if (!fs.existsSync(errorsFolderPath)) {
     fs.mkdirSync(errorsFolderPath);
   }
-
   const errorMessage = `${new Date().toISOString()} - ${
-    error instanceof Error ? error.stack : error
+    error instanceof Error ? error.stack : String(error)
   }\n`;
-
-  fs.appendFile(errorLogPath, errorMessage, (err) => {
-    if (err) {
-      console.error("Failed to write error to file:", err);
+  fs.appendFile(
+    errorLogPath,
+    errorMessage,
+    (err: NodeJS.ErrnoException | null) => {
+      if (err) {
+        console.error("Failed to write error to file:", err);
+      }
     }
-  });
+  );
+}
+
+// --------------- General Memory Functions (Per Guild) ---------------
+
+const GENERAL_MEMORY_DIRECTORY = "./generalMemory";
+
+// Save general memory for a given guild into its own file.
+export async function saveGeneralMemoryForGuild(
+  guildId: string,
+  entries: GeneralMemoryEntry[]
+): Promise<void> {
+  await ensureDirectoryExists(GENERAL_MEMORY_DIRECTORY);
+  const filePath = join(GENERAL_MEMORY_DIRECTORY, `${guildId}.bin`);
+  const data = JSON.stringify(entries);
+  await writeFile(filePath, encrypt(data), "utf-8");
+}
+
+// Load general memory for a given guild from its file.
+export async function loadGeneralMemoryForGuild(
+  guildId: string
+): Promise<GeneralMemoryEntry[]> {
+  const filePath = join(GENERAL_MEMORY_DIRECTORY, `${guildId}.bin`);
+  if (!fs.existsSync(filePath)) {
+    return [];
+  }
+  try {
+    const decrypted = decrypt(await fs.promises.readFile(filePath, "utf-8"));
+    const entries: GeneralMemoryEntry[] = JSON.parse(decrypted);
+    return entries;
+  } catch (error: unknown) {
+    saveErrorToFile(error);
+    return [];
+  }
 }

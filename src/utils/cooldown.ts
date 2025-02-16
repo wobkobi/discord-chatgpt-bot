@@ -2,7 +2,7 @@ import { config } from "../config.js";
 
 const cooldownSet = new Set<string>();
 
-export function manageCooldown(contextId: string) {
+export function manageCooldown(contextId: string): void {
   cooldownSet.add(contextId);
   setTimeout(() => cooldownSet.delete(contextId), config.cooldownTime);
 }
