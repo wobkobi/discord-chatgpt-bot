@@ -8,7 +8,7 @@ import {
   Partials,
 } from "discord.js";
 import dotenv from "dotenv";
-import { readdirSync } from "fs";
+import { existsSync, readdirSync } from "fs";
 import OpenAI from "openai";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
@@ -17,24 +17,33 @@ import { initializeGeneralMemory } from "./memory/generalMemory.js";
 
 dotenv.config();
 
+// Determine commands folder based on whether production build exists.
+const prodCommandsPath = join(resolve(), "build", "commands");
+const devCommandsPath = join(resolve(), "src", "commands");
+const commandsPath = existsSync(prodCommandsPath)
+  ? prodCommandsPath
+  : devCommandsPath;
+const fileExtension = existsSync(prodCommandsPath) ? ".js" : ".ts";
+
+console.log(`Loading commands from: ${commandsPath}`);
+
 // Create the Discord client with DM support.
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages, // Enables DM reading
+    GatewayIntentBits.DirectMessages,
   ],
-  partials: [Partials.Channel], // Required for DM channels
+  partials: [Partials.Channel],
 });
 
 // Extend the client with a commands collection.
 client.commands = new Collection();
 
-// Dynamically load command files from the "src/commands" directory.
-const commandsPath = join(resolve(), "src", "commands");
-const commandFiles = readdirSync(commandsPath).filter(
-  (file) => file.endsWith(".js") || file.endsWith(".ts")
+// Dynamically load command files from the determined commands directory.
+const commandFiles = readdirSync(commandsPath).filter((file) =>
+  file.endsWith(fileExtension)
 );
 
 for (const file of commandFiles) {
@@ -81,24 +90,20 @@ const openai = new OpenAI({
 
 // Listen for message events.
 client.on("messageCreate", async (message) => {
-  // 1. Ignore bot messages
+  // Ignore bot messages.
   if (message.author.bot) return;
 
-  // 2. If it's a DM (message.guild is null/undefined), handle it
+  // Process DMs or if the bot is mentioned in a guild.
   if (!message.guild) {
     (await handleNewMessage(openai, client))(message);
     return;
   }
-
-  // 3. In a guild: only respond if the bot is mentioned and not an @everyone or @here
   if (
     !message.mentions.has(client.user?.id ?? "") ||
     message.mentions.everyone
   ) {
     return;
   }
-
-  // If it passes the mention check, handle the message
   (await handleNewMessage(openai, client))(message);
 });
 
