@@ -19,7 +19,6 @@ export async function execute(
     });
     return;
   }
-
   if (interaction.user.id !== ownerId) {
     await interaction.reply({
       content: "Sorry, not allowed.",
@@ -27,12 +26,9 @@ export async function execute(
     });
     return;
   }
-
   await interaction.reply({
     content: "Bot is shutting down...",
     flags: MessageFlags.Ephemeral,
   });
-
-  // Wait a moment to send the reply, then exit.
   setTimeout(() => process.exit(0), 1000);
 }

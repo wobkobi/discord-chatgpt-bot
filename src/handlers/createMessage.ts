@@ -2,21 +2,16 @@ import { Client, Message } from "discord.js";
 import OpenAI, { APIError } from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat";
 import { getCharacterDescription } from "../data/characterDescription.js";
-import { generalMemory, updateGeneralMemory } from "../memory/generalMemory.js";
+import { updateUserMemory, userMemory } from "../memory/userMemory.js"; // <-- Added userMemory import
 import { ChatMessage, ConversationContext } from "../types/types.js";
 import {
   isCooldownActive,
   manageCooldown,
   useCooldown,
 } from "../utils/cooldown.js";
-import {
-  ensureFileExists,
-  markServerAsUpdated,
-  saveConversations,
-} from "../utils/fileUtils.js";
+import { ensureFileExists, markContextAsUpdated } from "../utils/fileUtils.js";
 
-// Conversation maps keyed by a "server" ID.
-// For DMs, we use a pseudo-guild ID (e.g. "dm-<userID>").
+// Conversation maps keyed by a context key (using the user's ID or composite key).
 const conversationHistories: Map<
   string,
   Map<string, ConversationContext>
@@ -24,42 +19,34 @@ const conversationHistories: Map<
 const conversationIdMap: Map<string, Map<string, string>> = new Map();
 
 /**
- * Main entry point for processing new messages.
- * If a message is sent in a DM (i.e. message.guild is falsy), then process it with handleDirectMessage.
- * Otherwise, process it as a guild message.
+ * Entry point for processing new messages.
+ * Uses the user's ID (or composite key) so persistent memory travels across servers and DMs.
  */
 export async function handleNewMessage(openai: OpenAI, client: Client) {
   return async function (message: Message<boolean>): Promise<void> {
     if (message.author.bot) return;
-
-    if (!message.guild) {
-      // DM: process directly
-      await handleDirectMessage(message, openai, client);
-      return;
-    }
-
-    // Guild message processing:
-    const guildId: string = message.guild.id;
-    initialiseConversationData(guildId);
-
+    const userId = message.author.id;
+    // Use a composite key if needed; here we use just the user ID for simplicity.
+    const contextKey = userId;
+    initialiseConversationData(contextKey);
     if (message.channel.isTextBased() && "sendTyping" in message.channel) {
       message.channel.sendTyping();
     }
-    await processMessage(message, guildId, openai, client);
+    await processMessage(message, contextKey, openai, client);
   };
 }
 
 /**
- * Process a guild message.
+ * Process a message and update conversation context.
  */
 async function processMessage(
   message: Message<boolean>,
-  guildId: string,
+  contextKey: string,
   openai: OpenAI,
   client: Client
 ): Promise<void> {
-  const guildConversationIds = conversationIdMap.get(guildId)!;
-  const contextId: string = getContextId(message, guildConversationIds);
+  const convIds = conversationIdMap.get(contextKey)!;
+  const contextId: string = getContextId(message, convIds);
 
   if (useCooldown && isCooldownActive(contextId)) {
     await message.reply(
@@ -71,104 +58,49 @@ async function processMessage(
     manageCooldown(contextId);
   }
 
-  const guildConversations = conversationHistories.get(guildId)!;
-  const conversationContext: ConversationContext = guildConversations.get(
-    contextId
-  ) || { messages: new Map<string, ChatMessage>() };
+  const convHist = conversationHistories.get(contextKey)!;
+  const conversationContext: ConversationContext = convHist.get(contextId) || {
+    messages: new Map<string, ChatMessage>(),
+  };
 
-  guildConversations.set(contextId, conversationContext);
-  guildConversationIds.set(message.id, contextId);
+  convHist.set(contextId, conversationContext);
+  convIds.set(message.id, contextId);
 
-  const newMessage: ChatMessage = createChatMessage(
+  const newMsg: ChatMessage = createChatMessage(
     message,
     "user",
     client.user?.username ?? "Bot"
   );
-  conversationContext.messages.set(message.id, newMessage);
+  conversationContext.messages.set(message.id, newMsg);
 
   try {
     const replyContent: string = await generateReply(
       conversationContext.messages,
       message.id,
       openai,
-      guildId
+      contextKey
     );
-    const fixedReplyContent = fixMentions(replyContent);
-    const sentMessage = await message.reply(fixedReplyContent);
-    const botMessage: ChatMessage = createChatMessage(
+    const fixedReply = fixMentions(replyContent);
+    const sentMessage = await message.reply(fixedReply);
+    const botMsg: ChatMessage = createChatMessage(
       sentMessage,
       "assistant",
       client.user?.username ?? "Bot"
     );
-    conversationContext.messages.set(sentMessage.id, botMessage);
-    guildConversationIds.set(sentMessage.id, contextId);
+    conversationContext.messages.set(sentMessage.id, botMsg);
+    convIds.set(sentMessage.id, contextId);
 
     const summary = summarizeConversation(conversationContext);
-    const memoryEntry = {
+    await updateUserMemory(newMsg.userId!, {
       timestamp: Date.now(),
-      content: `Conversation ${contextId} (asked by ${newMessage.name} [${newMessage.userId}]): ${summary}`,
-    };
-    await updateGeneralMemory(guildId, memoryEntry);
-    await saveConversations(conversationHistories, conversationIdMap);
-  } catch (error: unknown) {
-    await handleError(message, error);
-  }
-}
-
-/**
- * Process a DM message.
- * Uses a pseudo-guild ID ("dm-<userID>") so that DM conversations are stored separately.
- */
-async function handleDirectMessage(
-  message: Message<boolean>,
-  openai: OpenAI,
-  client: Client
-): Promise<void> {
-  const dmGuildId = `dm-${message.author.id}`;
-  initialiseConversationData(dmGuildId);
-
-  const dmConversationIds = conversationIdMap.get(dmGuildId)!;
-  const contextId: string = `${message.channel.id}-${message.id}`;
-  dmConversationIds.set(message.id, contextId);
-
-  const dmConversations = conversationHistories.get(dmGuildId)!;
-  const conversationContext: ConversationContext = dmConversations.get(
-    contextId
-  ) || { messages: new Map<string, ChatMessage>() };
-
-  dmConversations.set(contextId, conversationContext);
-
-  const newMessage: ChatMessage = createChatMessage(
-    message,
-    "user",
-    client.user?.username ?? "Bot"
-  );
-  conversationContext.messages.set(message.id, newMessage);
-
-  try {
-    const replyContent: string = await generateReply(
-      conversationContext.messages,
-      message.id,
-      openai,
-      dmGuildId
+      content: `Conversation ${contextId} (asked by ${newMsg.name}): ${summary}`,
+    });
+    // Ensure conversation files exist for this context.
+    await ensureFileExists(
+      [contextKey],
+      conversationHistories,
+      conversationIdMap
     );
-    const fixedReplyContent = fixMentions(replyContent);
-    const sentMessage = await message.reply(fixedReplyContent);
-    const botMessage: ChatMessage = createChatMessage(
-      sentMessage,
-      "assistant",
-      client.user?.username ?? "Bot"
-    );
-    conversationContext.messages.set(sentMessage.id, botMessage);
-    dmConversationIds.set(sentMessage.id, contextId);
-
-    const summary = summarizeConversation(conversationContext);
-    const memoryEntry = {
-      timestamp: Date.now(),
-      content: `DM Conversation ${contextId} (asked by ${newMessage.name} [${newMessage.userId}]): ${summary}`,
-    };
-    await updateGeneralMemory(dmGuildId, memoryEntry);
-    await saveConversations(conversationHistories, conversationIdMap);
   } catch (error: unknown) {
     await handleError(message, error);
   }
@@ -188,14 +120,15 @@ async function handleError(
 /**
  * Determines a conversation context ID.
  */
-function getContextId(
-  message: Message,
-  conversationIds: Map<string, string>
-): string {
+function getContextId(message: Message, convIds: Map<string, string>): string {
+  // For DMs, return the channel id as the conversation context.
+  if (!message.guild) {
+    return message.channel.id;
+  }
   const replyToId: string | undefined =
     message.reference?.messageId || undefined;
-  return replyToId && conversationIds.has(replyToId)
-    ? conversationIds.get(replyToId)!
+  return replyToId && convIds.has(replyToId)
+    ? convIds.get(replyToId)!
     : `${message.channel.id}-${message.id}`;
 }
 
@@ -224,10 +157,8 @@ function createChatMessage(
  * Sanitises a username.
  */
 function sanitiseUsername(username: string): string {
-  const cleanUsername = username
-    .replace(/[^a-zA-Z0-9_-]/g, "_")
-    .substring(0, 64);
-  return cleanUsername || "unknown_user";
+  const clean = username.replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 64);
+  return clean || "unknown_user";
 }
 
 /**
@@ -251,7 +182,7 @@ async function generateReply(
   messages: Map<string, ChatMessage>,
   currentMessageId: string,
   openai: OpenAI,
-  contextId: string
+  contextKey: string
 ): Promise<string> {
   const context: { role: "user" | "assistant" | "system"; content: string }[] =
     [];
@@ -260,17 +191,22 @@ async function generateReply(
   while (currentId) {
     const msg = messages.get(currentId);
     if (!msg) break;
-    const sanitizedContent = removeAtSymbols(msg.content);
+    const sanitized = removeAtSymbols(msg.content);
     const content =
       msg.role === "user"
-        ? `${msg.name} (ID: ${msg.userId}) asked: ${sanitizedContent}`
-        : removeAtSymbols(msg.content);
+        ? `${msg.name} (ID: ${msg.userId}) asked: ${sanitized}`
+        : sanitized;
     context.unshift({ role: msg.role, content });
     currentId = msg.replyToId;
   }
 
-  const memoryEntries = generalMemory.get(contextId) || [];
-  const memoryContent = memoryEntries.map((entry) => entry.content).join("\n");
+  // Retrieve persistent user memory from the userMemory map.
+  const memoryEntries = userMemory.get(contextKey) || [];
+  const memoryContent = memoryEntries
+    .map(
+      (entry: import("../types/types.js").GeneralMemoryEntry) => entry.content
+    )
+    .join("\n");
   if (memoryContent) {
     context.unshift({
       role: "system",
@@ -278,7 +214,6 @@ async function generateReply(
     });
   }
 
-  // Build the final messages array using ChatCompletionMessageParam.
   const finalMessages: ChatCompletionMessageParam[] = [
     {
       role: "system",
@@ -292,6 +227,8 @@ async function generateReply(
     })),
   ];
 
+  console.log("Full prompt context:", JSON.stringify(finalMessages, null, 2));
+
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -300,7 +237,6 @@ async function generateReply(
       frequency_penalty: 0.5,
       max_tokens: 2000,
     });
-
     const replyContent: string | null = response.choices[0]?.message.content;
     if (!replyContent) {
       throw new Error("Received an empty response from the AI.");
@@ -316,7 +252,7 @@ async function generateReply(
 }
 
 /**
- * Summarizes the conversation context (simple implementation).
+ * Summarizes the conversation context.
  */
 function summarizeConversation(context: ConversationContext): string {
   const msgs = Array.from(context.messages.values());
@@ -327,14 +263,14 @@ function summarizeConversation(context: ConversationContext): string {
 }
 
 /**
- * Initializes conversation storage for a given ID.
+ * Initializes conversation storage for a given key.
  */
-function initialiseConversationData(id: string): void {
-  if (!conversationHistories.has(id)) {
-    conversationHistories.set(id, new Map());
-    conversationIdMap.set(id, new Map());
+function initialiseConversationData(key: string): void {
+  if (!conversationHistories.has(key)) {
+    conversationHistories.set(key, new Map());
+    conversationIdMap.set(key, new Map());
   }
-  markServerAsUpdated(id);
+  markContextAsUpdated(key);
 }
 
 /**
@@ -342,8 +278,8 @@ function initialiseConversationData(id: string): void {
  */
 export async function run(client: Client): Promise<void> {
   try {
-    const serverIds: string[] = Array.from(client.guilds.cache.keys());
-    await ensureFileExists(serverIds, conversationHistories, conversationIdMap);
+    const guildIds: string[] = Array.from(client.guilds.cache.keys());
+    await ensureFileExists(guildIds, conversationHistories, conversationIdMap);
   } catch (error: unknown) {
     console.error("Failed to initialise conversations:", error);
     process.exit(1);
