@@ -231,7 +231,7 @@ async function generateReply(
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4.5-preview",
       messages: finalMessages,
       top_p: 0.6,
       frequency_penalty: 0.5,

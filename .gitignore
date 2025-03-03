@@ -4,6 +4,7 @@
 .env.local
 package-lock.json
 yarn.lock
+src/data/characterDescription.ts
 
 # folders
 build
@@ -11,4 +12,3 @@ node_modules
 .eslintcache
 data/*
 generalMemory/*
-src/data/characterDescription.ts
