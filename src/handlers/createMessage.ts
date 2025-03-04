@@ -2,7 +2,7 @@ import { Client, Message } from "discord.js";
 import OpenAI, { APIError } from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat";
 import { getCharacterDescription } from "../data/characterDescription.js";
-import { updateUserMemory, userMemory } from "../memory/userMemory.js"; // <-- Added userMemory import
+import { updateUserMemory, userMemory } from "../memory/userMemory.js";
 import { ChatMessage, ConversationContext } from "../types/types.js";
 import {
   isCooldownActive,
@@ -11,7 +11,7 @@ import {
 } from "../utils/cooldown.js";
 import { ensureFileExists, markContextAsUpdated } from "../utils/fileUtils.js";
 
-// Conversation maps keyed by a context key (using the user's ID or composite key).
+// Conversation maps keyed by a context key (using the user's ID as the persistent key).
 const conversationHistories: Map<
   string,
   Map<string, ConversationContext>
@@ -20,24 +20,28 @@ const conversationIdMap: Map<string, Map<string, string>> = new Map();
 
 /**
  * Entry point for processing new messages.
- * Uses the user's ID (or composite key) so persistent memory travels across servers and DMs.
+ * Uses the user's ID as the key so persistent memory travels across servers and DMs.
  */
 export async function handleNewMessage(openai: OpenAI, client: Client) {
   return async function (message: Message<boolean>): Promise<void> {
     if (message.author.bot) return;
+
     const userId = message.author.id;
-    // Use a composite key if needed; here we use just the user ID for simplicity.
+    // Use the user ID as the context key for persistent memory.
     const contextKey = userId;
     initialiseConversationData(contextKey);
+
+    // Show typing indicator if possible.
     if (message.channel.isTextBased() && "sendTyping" in message.channel) {
       message.channel.sendTyping();
     }
+
     await processMessage(message, contextKey, openai, client);
   };
 }
 
 /**
- * Process a message and update conversation context.
+ * Process a message, update the conversation context and persistent memory.
  */
 async function processMessage(
   message: Message<boolean>,
@@ -45,9 +49,11 @@ async function processMessage(
   openai: OpenAI,
   client: Client
 ): Promise<void> {
+  // Retrieve the conversation IDs map for this user.
   const convIds = conversationIdMap.get(contextKey)!;
   const contextId: string = getContextId(message, convIds);
 
+  // Check for cooldown to avoid spamming.
   if (useCooldown && isCooldownActive(contextId)) {
     await message.reply(
       "Please wait a few seconds before asking another question."
@@ -58,14 +64,15 @@ async function processMessage(
     manageCooldown(contextId);
   }
 
+  // Retrieve or create the conversation history for this context.
   const convHist = conversationHistories.get(contextKey)!;
   const conversationContext: ConversationContext = convHist.get(contextId) || {
     messages: new Map<string, ChatMessage>(),
   };
-
   convHist.set(contextId, conversationContext);
   convIds.set(message.id, contextId);
 
+  // Create and store the new chat message.
   const newMsg: ChatMessage = createChatMessage(
     message,
     "user",
@@ -74,6 +81,7 @@ async function processMessage(
   conversationContext.messages.set(message.id, newMsg);
 
   try {
+    // Generate a reply from OpenAI using the full conversation context.
     const replyContent: string = await generateReply(
       conversationContext.messages,
       message.id,
@@ -82,6 +90,8 @@ async function processMessage(
     );
     const fixedReply = fixMentions(replyContent);
     const sentMessage = await message.reply(fixedReply);
+
+    // Record the bot's reply in the conversation.
     const botMsg: ChatMessage = createChatMessage(
       sentMessage,
       "assistant",
@@ -90,12 +100,14 @@ async function processMessage(
     conversationContext.messages.set(sentMessage.id, botMsg);
     convIds.set(sentMessage.id, contextId);
 
+    // Summarize the last few messages and update persistent user memory.
     const summary = summarizeConversation(conversationContext);
     await updateUserMemory(newMsg.userId!, {
       timestamp: Date.now(),
       content: `Conversation ${contextId} (asked by ${newMsg.name}): ${summary}`,
     });
-    // Ensure conversation files exist for this context.
+
+    // Ensure the conversation is saved to persistent storage.
     await ensureFileExists(
       [contextKey],
       conversationHistories,
@@ -107,7 +119,7 @@ async function processMessage(
 }
 
 /**
- * Logs errors and replies to the user.
+ * Logs errors and notifies the user.
  */
 async function handleError(
   message: Message<boolean>,
@@ -119,9 +131,11 @@ async function handleError(
 
 /**
  * Determines a conversation context ID.
+ * For DMs, returns the channel id.
+ * For guild messages, if replying, it uses the replied-to message's context;
+ * otherwise, it creates a new context using channel and message id.
  */
 function getContextId(message: Message, convIds: Map<string, string>): string {
-  // For DMs, return the channel id as the conversation context.
   if (!message.guild) {
     return message.channel.id;
   }
@@ -169,14 +183,14 @@ function removeAtSymbols(text: string): string {
 }
 
 /**
- * Fixes mention formatting.
+ * Fixes mention formatting so that IDs appear correctly.
  */
 function fixMentions(content: string): string {
   return content.replace(/<(\d+)>/g, "<@$1>");
 }
 
 /**
- * Generates a reply using OpenAI.
+ * Generates a reply using the conversation context and persistent memory.
  */
 async function generateReply(
   messages: Map<string, ChatMessage>,
@@ -188,6 +202,7 @@ async function generateReply(
     [];
   let currentId: string | undefined = currentMessageId;
 
+  // Build the conversation context by walking back through reply chain.
   while (currentId) {
     const msg = messages.get(currentId);
     if (!msg) break;
@@ -200,13 +215,9 @@ async function generateReply(
     currentId = msg.replyToId;
   }
 
-  // Retrieve persistent user memory from the userMemory map.
+  // Retrieve persistent memory for this user.
   const memoryEntries = userMemory.get(contextKey) || [];
-  const memoryContent = memoryEntries
-    .map(
-      (entry: import("../types/types.js").GeneralMemoryEntry) => entry.content
-    )
-    .join("\n");
+  const memoryContent = memoryEntries.map((entry) => entry.content).join("\n");
   if (memoryContent) {
     context.unshift({
       role: "system",
@@ -214,6 +225,7 @@ async function generateReply(
     });
   }
 
+  // Compose final messages to be sent to OpenAI.
   const finalMessages: ChatCompletionMessageParam[] = [
     {
       role: "system",
@@ -252,7 +264,7 @@ async function generateReply(
 }
 
 /**
- * Summarizes the conversation context.
+ * Summarizes the last three messages in the conversation.
  */
 function summarizeConversation(context: ConversationContext): string {
   const msgs = Array.from(context.messages.values());
