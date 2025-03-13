@@ -1,153 +1,52 @@
 import { Client, Message } from "discord.js";
 import OpenAI, { APIError } from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat";
-import { getCharacterDescription } from "../data/characterDescription.js";
+import { defaultCooldownConfig } from "../config.js";
+import {
+  cloneUserId,
+  getCharacterDescription,
+} from "../data/characterDescription.js";
+import { updateCloneMemory } from "../memory/cloneMemory.js";
 import { updateUserMemory, userMemory } from "../memory/userMemory.js";
 import { ChatMessage, ConversationContext } from "../types/types.js";
 import {
+  getCooldownContext,
   isCooldownActive,
   manageCooldown,
   useCooldown,
 } from "../utils/cooldown.js";
 import { ensureFileExists, markContextAsUpdated } from "../utils/fileUtils.js";
 
-// Conversation maps keyed by a context key (using the user's ID as the persistent key).
-const conversationHistories: Map<
-  string,
-  Map<string, ConversationContext>
-> = new Map();
-const conversationIdMap: Map<string, Map<string, string>> = new Map();
-
 /**
- * Entry point for processing new messages.
- * Uses the user's ID as the key so persistent memory travels across servers and DMs.
+ * Helper: Removes "@" symbols from text.
  */
-export async function handleNewMessage(openai: OpenAI, client: Client) {
-  return async function (message: Message<boolean>): Promise<void> {
-    if (message.author.bot) return;
-
-    const userId = message.author.id;
-    // Use the user ID as the context key for persistent memory.
-    const contextKey = userId;
-    initialiseConversationData(contextKey);
-
-    // Show typing indicator if possible.
-    if (message.channel.isTextBased() && "sendTyping" in message.channel) {
-      message.channel.sendTyping();
-    }
-
-    await processMessage(message, contextKey, openai, client);
-  };
+function removeAtSymbols(text: string): string {
+  return text.replace(/@/g, "");
 }
 
 /**
- * Process a message, update the conversation context and persistent memory.
+ * Helper: Fixes mention formatting so that IDs appear correctly.
  */
-async function processMessage(
-  message: Message<boolean>,
-  contextKey: string,
-  openai: OpenAI,
-  client: Client
-): Promise<void> {
-  // Retrieve the conversation IDs map for this user.
-  const convIds = conversationIdMap.get(contextKey)!;
-  const contextId: string = getContextId(message, convIds);
-
-  // Check for cooldown to avoid spamming.
-  if (useCooldown && isCooldownActive(contextId)) {
-    await message.reply(
-      "Please wait a few seconds before asking another question."
-    );
-    return;
-  }
-  if (useCooldown) {
-    manageCooldown(contextId);
-  }
-
-  // Retrieve or create the conversation history for this context.
-  const convHist = conversationHistories.get(contextKey)!;
-  const conversationContext: ConversationContext = convHist.get(contextId) || {
-    messages: new Map<string, ChatMessage>(),
-  };
-  convHist.set(contextId, conversationContext);
-  convIds.set(message.id, contextId);
-
-  // Create and store the new chat message.
-  const newMsg: ChatMessage = createChatMessage(
-    message,
-    "user",
-    client.user?.username ?? "Bot"
-  );
-  conversationContext.messages.set(message.id, newMsg);
-
-  try {
-    // Generate a reply from OpenAI using the full conversation context.
-    const replyContent: string = await generateReply(
-      conversationContext.messages,
-      message.id,
-      openai,
-      contextKey
-    );
-    const fixedReply = fixMentions(replyContent);
-    const sentMessage = await message.reply(fixedReply);
-
-    // Record the bot's reply in the conversation.
-    const botMsg: ChatMessage = createChatMessage(
-      sentMessage,
-      "assistant",
-      client.user?.username ?? "Bot"
-    );
-    conversationContext.messages.set(sentMessage.id, botMsg);
-    convIds.set(sentMessage.id, contextId);
-
-    // Summarize the last few messages and update persistent user memory.
-    const summary = summarizeConversation(conversationContext);
-    await updateUserMemory(newMsg.userId!, {
-      timestamp: Date.now(),
-      content: `Conversation ${contextId} (asked by ${newMsg.name}): ${summary}`,
-    });
-
-    // Ensure the conversation is saved to persistent storage.
-    await ensureFileExists(
-      [contextKey],
-      conversationHistories,
-      conversationIdMap
-    );
-  } catch (error: unknown) {
-    await handleError(message, error);
-  }
+function fixMentions(content: string): string {
+  return content.replace(/<(\d+)>/g, "<@$1>");
 }
 
 /**
- * Logs errors and notifies the user.
- */
-async function handleError(
-  message: Message<boolean>,
-  error: unknown
-): Promise<void> {
-  console.error("Failed to process message:", error);
-  await message.reply("An error occurred while processing your request.");
-}
-
-/**
- * Determines a conversation context ID.
- * For DMs, returns the channel id.
- * For guild messages, if replying, it uses the replied-to message's context;
- * otherwise, it creates a new context using channel and message id.
+ * Helper: Determines a conversation context ID.
+ * For DMs, returns the channel ID; for guild messages, attempts to use the replied-to message's context.
  */
 function getContextId(message: Message, convIds: Map<string, string>): string {
   if (!message.guild) {
     return message.channel.id;
   }
-  const replyToId: string | undefined =
-    message.reference?.messageId || undefined;
+  const replyToId = message.reference?.messageId;
   return replyToId && convIds.has(replyToId)
     ? convIds.get(replyToId)!
     : `${message.channel.id}-${message.id}`;
 }
 
 /**
- * Creates a ChatMessage object.
+ * Helper: Creates a ChatMessage object.
  */
 function createChatMessage(
   message: Message,
@@ -163,30 +62,16 @@ function createChatMessage(
         : (botName ?? "Bot"),
     userId: role === "user" ? message.author.id : undefined,
     content: message.content,
-    replyToId: message.reference?.messageId || undefined,
+    replyToId: message.reference?.messageId,
   };
 }
 
 /**
- * Sanitises a username.
+ * Helper: Sanitises a username.
  */
 function sanitiseUsername(username: string): string {
   const clean = username.replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 64);
   return clean || "unknown_user";
-}
-
-/**
- * Removes "@" symbols from text.
- */
-function removeAtSymbols(text: string): string {
-  return text.replace(/@/g, "");
-}
-
-/**
- * Fixes mention formatting so that IDs appear correctly.
- */
-function fixMentions(content: string): string {
-  return content.replace(/<(\d+)>/g, "<@$1>");
 }
 
 /**
@@ -202,7 +87,7 @@ async function generateReply(
     [];
   let currentId: string | undefined = currentMessageId;
 
-  // Build the conversation context by walking back through reply chain.
+  // Walk back through the conversation reply chain.
   while (currentId) {
     const msg = messages.get(currentId);
     if (!msg) break;
@@ -215,7 +100,7 @@ async function generateReply(
     currentId = msg.replyToId;
   }
 
-  // Retrieve persistent memory for this user.
+  // Retrieve long-term memory for this user.
   const memoryEntries = userMemory.get(contextKey) || [];
   const memoryContent = memoryEntries.map((entry) => entry.content).join("\n");
   if (memoryContent) {
@@ -225,15 +110,14 @@ async function generateReply(
     });
   }
 
-  // Compose final messages to be sent to OpenAI.
   const finalMessages: ChatCompletionMessageParam[] = [
     {
       role: "system",
-      content: getCharacterDescription().trim(),
+      content: (await getCharacterDescription(contextKey)).trim(),
       name: undefined,
     },
     ...context.map((msg) => ({
-      role: msg.role as "user" | "assistant" | "system",
+      role: msg.role,
       content: msg.content,
       name: undefined,
     })),
@@ -257,14 +141,14 @@ async function generateReply(
   } catch (error: unknown) {
     console.error("Error processing ChatGPT response:", error);
     if (error instanceof APIError && error.code === "insufficient_quota") {
-      return "I've reached my limit of wisdom for now. Pay Harrison to get more.";
+      return `I've reached my limit of wisdom for now. Please pay <@${process.env.OWNER_ID}> money to get more credits.`;
     }
     throw new Error("There was an error processing your request.");
   }
 }
 
 /**
- * Summarizes the last three messages in the conversation.
+ * Summarizes the conversation context.
  */
 function summarizeConversation(context: ConversationContext): string {
   const msgs = Array.from(context.messages.values());
@@ -272,6 +156,161 @@ function summarizeConversation(context: ConversationContext): string {
     .slice(-3)
     .map((msg) => msg.content)
     .join(" ");
+}
+
+// ----------------------------------------------------------------
+// In-memory conversation storage and mappings.
+// ----------------------------------------------------------------
+const conversationHistories: Map<
+  string,
+  Map<string, ConversationContext>
+> = new Map();
+const conversationIdMap: Map<string, Map<string, string>> = new Map();
+
+// Threshold for summarization.
+const CONVERSATION_MESSAGE_LIMIT = 10;
+
+/**
+ * Entry point for processing new messages.
+ * Uses the user's ID as the key so persistent memory travels across sessions.
+ */
+export async function handleNewMessage(openai: OpenAI, client: Client) {
+  return async function (message: Message<boolean>): Promise<void> {
+    if (message.author.bot) return;
+    const userId = message.author.id;
+    const contextKey = userId;
+    initialiseConversationData(contextKey);
+
+    // In DMs, always send typing indicator.
+    if (!message.guild) {
+      if (message.channel.isTextBased() && "sendTyping" in message.channel) {
+        message.channel.sendTyping();
+      }
+    } else {
+      // In guilds, only send typing if the bot is mentioned and the user is not the clone.
+      if (
+        message.author.id !== cloneUserId &&
+        message.mentions.has(client.user?.id ?? "")
+      ) {
+        if (message.channel.isTextBased() && "sendTyping" in message.channel) {
+          message.channel.sendTyping();
+        }
+      }
+    }
+    await processMessage(message, contextKey, openai, client);
+  };
+}
+
+/**
+ * Process a message: update conversation context, persistent memory, and generate a reply.
+ */
+async function processMessage(
+  message: Message<boolean>,
+  contextKey: string,
+  openai: OpenAI,
+  client: Client
+): Promise<void> {
+  // If this message is from the clone user, update the clone memory and do not reply.
+  if (message.author.id === cloneUserId) {
+    await updateCloneMemory(cloneUserId, {
+      timestamp: Date.now(),
+      content: message.content,
+    });
+    return;
+  }
+
+  // Retrieve the conversation IDs map for this user.
+  const convIds = conversationIdMap.get(contextKey)!;
+  const contextId: string = getContextId(message, convIds);
+  const guildId = message.guild ? message.guild.id : null;
+  const cooldownContext = getCooldownContext(guildId, message.author.id);
+
+  if (useCooldown && isCooldownActive(cooldownContext)) {
+    const currentCooldown = guildId
+      ? defaultCooldownConfig.cooldownTime.toFixed(2)
+      : defaultCooldownConfig.cooldownTime.toFixed(2);
+    const cooldownMsg = await message.reply(
+      `You're sending messages too quickly. The server cooldown is set to ${currentCooldown} seconds. Please wait before asking another question.`
+    );
+    setTimeout(() => {
+      cooldownMsg.delete().catch(console.error);
+    }, 5000);
+    return;
+  }
+
+  if (useCooldown) {
+    manageCooldown(guildId, message.author.id);
+  }
+
+  // Retrieve or create the conversation history.
+  const convHist = conversationHistories.get(contextKey)!;
+  const conversationContext: ConversationContext = convHist.get(contextId) || {
+    messages: new Map<string, ChatMessage>(),
+  };
+  convHist.set(contextId, conversationContext);
+  convIds.set(message.id, contextId);
+
+  // Create a chat message from the user's message.
+  const newMsg: ChatMessage = createChatMessage(
+    message,
+    "user",
+    client.user?.username ?? "Bot"
+  );
+  conversationContext.messages.set(message.id, newMsg);
+
+  // If conversation history is too long, summarize and update persistent memory.
+  if (conversationContext.messages.size >= CONVERSATION_MESSAGE_LIMIT) {
+    const summary = summarizeConversation(conversationContext);
+    await updateUserMemory(newMsg.userId!, {
+      timestamp: Date.now(),
+      content: `Summary for conversation ${contextId}: ${summary}`,
+    });
+    conversationContext.messages.clear();
+  }
+
+  try {
+    const replyContent: string = await generateReply(
+      conversationContext.messages,
+      message.id,
+      openai,
+      contextKey
+    );
+    const fixedReply = fixMentions(replyContent);
+    const sentMessage = await message.reply(fixedReply);
+
+    // Record the bot's reply.
+    const botMsg: ChatMessage = createChatMessage(
+      sentMessage,
+      "assistant",
+      client.user?.username ?? "Bot"
+    );
+    conversationContext.messages.set(sentMessage.id, botMsg);
+    convIds.set(sentMessage.id, contextId);
+
+    const summary = summarizeConversation(conversationContext);
+    await updateUserMemory(newMsg.userId!, {
+      timestamp: Date.now(),
+      content: `Conversation ${contextKey} (asked by ${newMsg.name}): ${summary}`,
+    });
+    await ensureFileExists(
+      [contextKey],
+      conversationHistories,
+      conversationIdMap
+    );
+  } catch (error: unknown) {
+    await handleError(message, error);
+  }
+}
+
+/**
+ * Logs errors and notifies the user.
+ */
+async function handleError(
+  message: Message<boolean>,
+  error: unknown
+): Promise<void> {
+  console.error("Failed to process message:", error);
+  await message.reply("An error occurred while processing your request.");
 }
 
 /**

@@ -26,6 +26,7 @@ export const GENERAL_MEMORY_DIRECTORY = join(
   "generalMemory"
 );
 export const USER_MEMORY_DIRECTORY = join(BASE_DATA_DIRECTORY, "userMemory");
+export const CLONE_MEMORY_DIRECTORY = join(BASE_DATA_DIRECTORY, "cloneMemory");
 export const ERRORS_DIRECTORY = join(BASE_DATA_DIRECTORY, "errors");
 
 // A set to track which contexts (guilds or user IDs) have updated conversation histories.
@@ -82,12 +83,6 @@ export async function ensureDirectoryExists(
   }
 }
 
-/**
- * For each context key (e.g. guild ID or user ID), load its conversation data.
- * @param contextKeys Array of context keys.
- * @param conversationHistories Map storing conversation histories.
- * @param conversationIdMap Map storing conversation ID mappings.
- */
 export async function ensureFileExists(
   contextKeys: string[],
   conversationHistories: Map<string, Map<string, ConversationContext>>,
@@ -100,30 +95,91 @@ export async function ensureFileExists(
   );
 }
 
-export function markContextAsUpdated(contextKey: string): void {
-  updatedContexts.add(contextKey);
+/**
+ * Generic function to save memory entries.
+ * @param directory The directory to save the file in.
+ * @param id The user or guild id.
+ * @param entries Memory entries to save.
+ */
+export async function saveMemory(
+  directory: string,
+  id: string,
+  entries: GeneralMemoryEntry[]
+): Promise<void> {
+  await ensureDirectoryExists(directory);
+  const filePath = join(directory, `${id}.bin`);
+  const data = JSON.stringify(entries);
+  await writeFile(filePath, encrypt(data), "utf-8");
 }
 
-export function saveErrorToFile(error: unknown): void {
-  const folder = ERRORS_DIRECTORY;
-  ensureDirectoryExists(folder);
-  const currentDate = new Date().toISOString().split("T")[0];
-  const errorLogPath = join(folder, `error-${currentDate}.log`);
-  if (!fs.existsSync(folder)) {
-    fs.mkdirSync(folder, { recursive: true });
+/**
+ * Generic function to load memory entries.
+ * @param directory The directory to load the file from.
+ * @param id The user or guild id.
+ * @returns The loaded memory entries.
+ */
+export async function loadMemory(
+  directory: string,
+  id: string
+): Promise<GeneralMemoryEntry[]> {
+  await ensureDirectoryExists(directory);
+  const filePath = join(directory, `${id}.bin`);
+  if (!fs.existsSync(filePath)) {
+    return [];
   }
-  const errorMessage = `${new Date().toISOString()} - ${
-    error instanceof Error ? error.stack : String(error)
-  }\n`;
-  fs.appendFile(
-    errorLogPath,
-    errorMessage,
-    (err: NodeJS.ErrnoException | null) => {
-      if (err) {
-        console.error("Failed to write error to file:", err);
-      }
-    }
-  );
+  try {
+    const encryptedData = await fs.promises.readFile(filePath, "utf-8");
+    const decrypted = decrypt(encryptedData);
+    const entries: GeneralMemoryEntry[] = JSON.parse(decrypted);
+    return entries;
+  } catch (error: unknown) {
+    console.error(`Error loading memory for ${id} from ${directory}:`, error);
+    return [];
+  }
+}
+
+// ---------------- Specific Memory Functions ----------------
+
+// General memory for guilds remains separate.
+export async function saveGeneralMemoryForGuild(
+  guildId: string,
+  entries: GeneralMemoryEntry[]
+): Promise<void> {
+  await saveMemory(GENERAL_MEMORY_DIRECTORY, guildId, entries);
+}
+
+export async function loadGeneralMemoryForGuild(
+  guildId: string
+): Promise<GeneralMemoryEntry[]> {
+  return loadMemory(GENERAL_MEMORY_DIRECTORY, guildId);
+}
+
+// User memory functions.
+export async function saveUserMemory(
+  userId: string,
+  entries: GeneralMemoryEntry[]
+): Promise<void> {
+  await saveMemory(USER_MEMORY_DIRECTORY, userId, entries);
+}
+
+export async function loadUserMemory(
+  userId: string
+): Promise<GeneralMemoryEntry[]> {
+  return loadMemory(USER_MEMORY_DIRECTORY, userId);
+}
+
+// Clone memory functions.
+export async function saveCloneMemory(
+  userId: string,
+  entries: GeneralMemoryEntry[]
+): Promise<void> {
+  await saveMemory(CLONE_MEMORY_DIRECTORY, userId, entries);
+}
+
+export async function loadCloneMemory(
+  userId: string
+): Promise<GeneralMemoryEntry[]> {
+  return loadMemory(CLONE_MEMORY_DIRECTORY, userId);
 }
 
 // ---------------- Conversation Storage (per context) ----------------
@@ -195,63 +251,28 @@ export async function loadConversations(
   }
 }
 
-// ---------------- General Memory Functions (for guilds) ----------------
-
-export async function saveGeneralMemoryForGuild(
-  guildId: string,
-  entries: GeneralMemoryEntry[]
-): Promise<void> {
-  await ensureDirectoryExists(GENERAL_MEMORY_DIRECTORY);
-  const filePath = join(GENERAL_MEMORY_DIRECTORY, `${guildId}.bin`);
-  const data = JSON.stringify(entries);
-  await writeFile(filePath, encrypt(data), "utf-8");
+export function markContextAsUpdated(contextKey: string): void {
+  updatedContexts.add(contextKey);
 }
 
-export async function loadGeneralMemoryForGuild(
-  guildId: string
-): Promise<GeneralMemoryEntry[]> {
-  await ensureDirectoryExists(GENERAL_MEMORY_DIRECTORY);
-  const filePath = join(GENERAL_MEMORY_DIRECTORY, `${guildId}.bin`);
-  if (!fs.existsSync(filePath)) {
-    return [];
+export function saveErrorToFile(error: unknown): void {
+  const folder = ERRORS_DIRECTORY;
+  ensureDirectoryExists(folder);
+  const currentDate = new Date().toISOString().split("T")[0];
+  const errorLogPath = join(folder, `error-${currentDate}.log`);
+  if (!fs.existsSync(folder)) {
+    fs.mkdirSync(folder, { recursive: true });
   }
-  try {
-    const decrypted = decrypt(await fs.promises.readFile(filePath, "utf-8"));
-    const entries: GeneralMemoryEntry[] = JSON.parse(decrypted);
-    return entries;
-  } catch (error: unknown) {
-    saveErrorToFile(error);
-    return [];
-  }
-}
-
-// ---------------- User Memory Functions ----------------
-
-export async function saveUserMemory(
-  userId: string,
-  entries: GeneralMemoryEntry[]
-): Promise<void> {
-  await ensureDirectoryExists(USER_MEMORY_DIRECTORY);
-  const filePath = join(USER_MEMORY_DIRECTORY, `${userId}.bin`);
-  const data = JSON.stringify(entries);
-  await writeFile(filePath, encrypt(data), "utf-8");
-}
-
-export async function loadUserMemory(
-  userId: string
-): Promise<GeneralMemoryEntry[]> {
-  await ensureDirectoryExists(USER_MEMORY_DIRECTORY);
-  const filePath = join(USER_MEMORY_DIRECTORY, `${userId}.bin`);
-  if (!fs.existsSync(filePath)) {
-    return [];
-  }
-  try {
-    const encryptedData = await fs.promises.readFile(filePath, "utf-8");
-    const decrypted = decrypt(encryptedData);
-    const entries: GeneralMemoryEntry[] = JSON.parse(decrypted);
-    return entries;
-  } catch (error: unknown) {
-    console.error("Error loading user memory:", error);
-    return [];
-  }
+  const errorMessage = `${new Date().toISOString()} - ${
+    error instanceof Error ? error.stack : String(error)
+  }\n`;
+  fs.appendFile(
+    errorLogPath,
+    errorMessage,
+    (err: NodeJS.ErrnoException | null) => {
+      if (err) {
+        console.error("Failed to write error to file:", err);
+      }
+    }
+  );
 }
