@@ -7,7 +7,7 @@ import {
 export const generalMemory = new Map<string, GeneralMemoryEntry[]>();
 
 /**
- * Initializes the general memory map.
+ * Initializes the general (guild) memory map.
  */
 export async function initializeGeneralMemory(): Promise<void> {
   // Clear any existing memory.
@@ -19,17 +19,23 @@ export async function initializeGeneralMemory(): Promise<void> {
  * Updates general (guild) memory.
  * Retrieves stored entries from the in-memory cache (or loads from disk if not present),
  * adds the new entry, updates the cache, and then saves to disk.
+ * (Additional formatting can be applied here if referencing users within the guild context.)
  */
 export async function updateGeneralMemory(
   guildId: string,
   entry: GeneralMemoryEntry
 ): Promise<void> {
   try {
+    // For now, we simply pass the entry through; you can extend this to format user references if needed.
+    const formattedEntry: GeneralMemoryEntry = {
+      ...entry,
+      content: entry.content,
+    };
     const existingEntries =
       generalMemory.get(guildId) ??
       (await loadGeneralMemoryForGuild(guildId)) ??
       [];
-    const updatedEntries = [...existingEntries, entry];
+    const updatedEntries = [...existingEntries, formattedEntry];
     generalMemory.set(guildId, updatedEntries);
     await saveGeneralMemoryForGuild(guildId, updatedEntries);
   } catch (error) {

@@ -15,16 +15,21 @@ export async function initializeUserMemory(): Promise<void> {
 /**
  * Updates user memory.
  * Retrieves stored entries from the in-memory cache (or loads from disk if not present),
- * adds the new entry, updates the cache, and then saves to disk.
+ * adds the new entry (with the user mentioned in the content), updates the cache, and then saves to disk.
  */
 export async function updateUserMemory(
   userId: string,
   entry: GeneralMemoryEntry
 ): Promise<void> {
   try {
+    // Format the entry so that it clearly shows who asked the question using a proper mention.
+    const formattedEntry: GeneralMemoryEntry = {
+      ...entry,
+      content: `<@${userId}>: ${entry.content}`,
+    };
     const existingEntries =
       userMemory.get(userId) ?? (await loadUserMemory(userId)) ?? [];
-    const updatedEntries = [...existingEntries, entry];
+    const updatedEntries = [...existingEntries, formattedEntry];
     userMemory.set(userId, updatedEntries);
     await saveUserMemory(userId, updatedEntries);
   } catch (error) {

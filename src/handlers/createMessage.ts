@@ -93,9 +93,7 @@ async function generateReply(
     if (!msg) break;
     const sanitized = removeAtSymbols(msg.content);
     const content =
-      msg.role === "user"
-        ? `${msg.name} (ID: ${msg.userId}) asked: ${sanitized}`
-        : sanitized;
+      msg.role === "user" ? `<@${msg.userId}> asked: ${sanitized}` : sanitized;
     context.unshift({ role: msg.role, content });
     currentId = msg.replyToId;
   }
@@ -261,9 +259,10 @@ async function processMessage(
   // If conversation history is too long, summarize and update persistent memory.
   if (conversationContext.messages.size >= CONVERSATION_MESSAGE_LIMIT) {
     const summary = summarizeConversation(conversationContext);
+    // Instead of using newMsg.name or raw userId, use the mention format:
     await updateUserMemory(newMsg.userId!, {
       timestamp: Date.now(),
-      content: `Summary for conversation ${contextId}: ${summary}`,
+      content: `Conversation ${contextKey} (asked by <@${newMsg.userId}>): ${summary}`,
     });
     conversationContext.messages.clear();
   }
