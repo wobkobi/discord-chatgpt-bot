@@ -15,7 +15,6 @@ import {
 } from "../types/types.js";
 dotenv.config();
 
-// Base directories for persistent data.
 export const BASE_DATA_DIRECTORY = "./data";
 export const CONVERSATIONS_DIRECTORY = join(
   BASE_DATA_DIRECTORY,
@@ -29,10 +28,8 @@ export const USER_MEMORY_DIRECTORY = join(BASE_DATA_DIRECTORY, "userMemory");
 export const CLONE_MEMORY_DIRECTORY = join(BASE_DATA_DIRECTORY, "cloneMemory");
 export const ERRORS_DIRECTORY = join(BASE_DATA_DIRECTORY, "errors");
 
-// A set to track which contexts (guilds or user IDs) have updated conversation histories.
 const updatedContexts: Set<string> = new Set();
 
-// Create a 32-byte encryption key from the environment variable.
 const ENCRYPTION_KEY_BASE = process.env.ENCRYPTION_KEY_BASE || "";
 if (!ENCRYPTION_KEY_BASE) {
   throw new Error("ENCRYPTION_KEY_BASE environment variable is required.");
@@ -45,8 +42,10 @@ const IV_LENGTH = 16;
 export function encrypt(text: string): string {
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
-  let encrypted = cipher.update(text, "utf8");
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  const encrypted = Buffer.concat([
+    cipher.update(text, "utf8"),
+    cipher.final(),
+  ]);
   const authTag = cipher.getAuthTag();
   return `${iv.toString("hex")}:${encrypted.toString("hex")}:${authTag.toString("hex")}`;
 }
@@ -63,8 +62,10 @@ export function decrypt(text: string): string {
   const authTag = Buffer.from(parts[2], "hex");
   const decipher = createDecipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
   decipher.setAuthTag(authTag);
-  let decrypted = decipher.update(encryptedText);
-  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  const decrypted = Buffer.concat([
+    decipher.update(encryptedText),
+    decipher.final(),
+  ]);
   return decrypted.toString("utf8");
 }
 
@@ -95,12 +96,6 @@ export async function ensureFileExists(
   );
 }
 
-/**
- * Generic function to save memory entries.
- * @param directory The directory to save the file in.
- * @param id The user or guild id.
- * @param entries Memory entries to save.
- */
 export async function saveMemory(
   directory: string,
   id: string,
@@ -112,35 +107,23 @@ export async function saveMemory(
   await writeFile(filePath, encrypt(data), "utf-8");
 }
 
-/**
- * Generic function to load memory entries.
- * @param directory The directory to load the file from.
- * @param id The user or guild id.
- * @returns The loaded memory entries.
- */
 export async function loadMemory(
   directory: string,
   id: string
 ): Promise<GeneralMemoryEntry[]> {
   await ensureDirectoryExists(directory);
   const filePath = join(directory, `${id}.bin`);
-  if (!fs.existsSync(filePath)) {
-    return [];
-  }
+  if (!fs.existsSync(filePath)) return [];
   try {
     const encryptedData = await fs.promises.readFile(filePath, "utf-8");
     const decrypted = decrypt(encryptedData);
-    const entries: GeneralMemoryEntry[] = JSON.parse(decrypted);
-    return entries;
+    return JSON.parse(decrypted) as GeneralMemoryEntry[];
   } catch (error: unknown) {
     console.error(`Error loading memory for ${id} from ${directory}:`, error);
     return [];
   }
 }
 
-// ---------------- Specific Memory Functions ----------------
-
-// General memory for guilds remains separate.
 export async function saveGeneralMemoryForGuild(
   guildId: string,
   entries: GeneralMemoryEntry[]
@@ -154,7 +137,6 @@ export async function loadGeneralMemoryForGuild(
   return loadMemory(GENERAL_MEMORY_DIRECTORY, guildId);
 }
 
-// User memory functions.
 export async function saveUserMemory(
   userId: string,
   entries: GeneralMemoryEntry[]
@@ -168,7 +150,6 @@ export async function loadUserMemory(
   return loadMemory(USER_MEMORY_DIRECTORY, userId);
 }
 
-// Clone memory functions.
 export async function saveCloneMemory(
   userId: string,
   entries: GeneralMemoryEntry[]
@@ -181,8 +162,6 @@ export async function loadCloneMemory(
 ): Promise<GeneralMemoryEntry[]> {
   return loadMemory(CLONE_MEMORY_DIRECTORY, userId);
 }
-
-// ---------------- Conversation Storage (per context) ----------------
 
 export async function saveConversations(
   conversationHistories: Map<string, Map<string, ConversationContext>>,
@@ -197,12 +176,13 @@ export async function saveConversations(
         const dataPath = join(CONVERSATIONS_DIRECTORY, `${contextKey}.bin`);
         const idPath = join(CONVERSATIONS_DIRECTORY, `${contextKey}-idMap.bin`);
         const conversationsData = JSON.stringify(
-          Array.from(histories.entries()).reduce<{
-            [key: string]: { messages: [string, ChatMessage][] };
-          }>((obj, [key, context]) => {
-            obj[key] = { messages: Array.from(context.messages.entries()) };
-            return obj;
-          }, {})
+          Array.from(histories.entries()).reduce(
+            (obj, [key, context]) => {
+              obj[key] = { messages: Array.from(context.messages.entries()) };
+              return obj;
+            },
+            {} as { [key: string]: { messages: [string, ChatMessage][] } }
+          )
         );
         const idMappingsData = JSON.stringify(Array.from(idMap.entries()));
         await Promise.all([

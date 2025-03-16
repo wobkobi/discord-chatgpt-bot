@@ -9,7 +9,6 @@ import {
   saveGuildCooldownConfigs,
 } from "../config.js";
 
-// Only the owner can change the cooldown settings.
 const ownerId = process.env.OWNER_ID || "defaultOwnerId";
 
 export const data = new SlashCommandBuilder()
@@ -23,7 +22,6 @@ export const data = new SlashCommandBuilder()
       .setDescription("Cooldown time in seconds (e.g., 2.5)")
       .setRequired(false)
   )
-  // Use "peruser" (no spaces) as the option name.
   .addBooleanOption((option) =>
     option
       .setName("peruser")
@@ -62,7 +60,7 @@ export async function execute(
   if (reset) {
     guildCooldownConfigs.set(interaction.guildId, {
       useCooldown: defaultCooldownConfig.useCooldown,
-      cooldownTime: defaultCooldownConfig.cooldownTime, // in seconds
+      cooldownTime: defaultCooldownConfig.cooldownTime,
       perUserCooldown: defaultCooldownConfig.perUserCooldown,
     });
     await saveGuildCooldownConfigs();
@@ -81,7 +79,7 @@ export async function execute(
 
   guildCooldownConfigs.set(interaction.guildId, {
     useCooldown: defaultCooldownConfig.useCooldown,
-    cooldownTime: cooldownTimeInSeconds, // stored in seconds
+    cooldownTime: cooldownTimeInSeconds,
     perUserCooldown,
   });
   await saveGuildCooldownConfigs();

@@ -19,7 +19,6 @@ import { initializeUserMemory } from "./memory/userMemory.js";
 
 dotenv.config();
 
-// Determine commands folder based on production status.
 const prodCommandsPath = join(resolve(), "build", "commands");
 const devCommandsPath = join(resolve(), "src", "commands");
 const commandsPath = existsSync(prodCommandsPath)
@@ -29,7 +28,6 @@ const fileExtension = existsSync(prodCommandsPath) ? ".js" : ".ts";
 
 console.log(`Loading commands from: ${commandsPath}`);
 
-// Create the Discord client with DM support.
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -40,10 +38,8 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-// Extend the client with a commands collection.
 client.commands = new Collection();
 
-// Dynamically load command files.
 const commandFiles = readdirSync(commandsPath).filter((file) =>
   file.endsWith(fileExtension)
 );
@@ -57,7 +53,6 @@ for (const file of commandFiles) {
 }
 console.log(`Loaded ${client.commands.size} slash command(s).`);
 
-// Function to register commands globally.
 async function registerGlobalCommands(): Promise<void> {
   const rest = new REST({ version: "10" }).setToken(process.env.BOT_TOKEN!);
   const commandData = Array.from(client.commands.values()).map((cmd) =>
@@ -74,7 +69,6 @@ async function registerGlobalCommands(): Promise<void> {
   }
 }
 
-// Ready event: register commands and initialize memory.
 client.once("ready", async () => {
   console.log("Bot is ready.");
   await registerGlobalCommands();
@@ -84,26 +78,22 @@ client.once("ready", async () => {
   await run(client);
 });
 
-// Create OpenAI client.
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Listen for message events.
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
-  // Process DMs always.
+  // Process direct messages
   if (!message.guild) {
     (await handleNewMessage(openai, client))(message);
     return;
   }
-  // If the message is from the clone user, process it regardless of mentions.
+  // Process messages from the clone user
   if (message.author.id === cloneUserId) {
     (await handleNewMessage(openai, client))(message);
     return;
   }
-  // For other guild messages, only process if the bot is mentioned (and not an @everyone mention).
+  // Process guild messages only when the bot is mentioned (and not for @everyone)
   if (
     !message.mentions.has(client.user?.id ?? "") ||
     message.mentions.everyone
@@ -113,7 +103,6 @@ client.on("messageCreate", async (message) => {
   (await handleNewMessage(openai, client))(message);
 });
 
-// Listen for slash command interactions.
 client.on("interactionCreate", async (interaction: Interaction) => {
   if (!interaction.isChatInputCommand()) return;
   const command = client.commands.get(interaction.commandName);
@@ -136,7 +125,6 @@ client.on("interactionCreate", async (interaction: Interaction) => {
   }
 });
 
-// Log in the bot.
 client
   .login(process.env.BOT_TOKEN)
   .then(() => console.log("Bot logged in successfully."))

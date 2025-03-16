@@ -18,22 +18,21 @@ import {
 import { ensureFileExists, markContextAsUpdated } from "../utils/fileUtils.js";
 
 /**
- * Helper: Removes "@" symbols from text.
+ * Removes "@" symbols from text.
  */
 function removeAtSymbols(text: string): string {
   return text.replace(/@/g, "");
 }
 
 /**
- * Helper: Fixes mention formatting so that IDs appear correctly.
+ * Fixes mention formatting so that IDs appear correctly.
  */
 function fixMentions(content: string): string {
   return content.replace(/<(\d+)>/g, "<@$1>");
 }
 
 /**
- * Helper: Determines a conversation context ID.
- * For DMs, returns the channel ID; for guild messages, attempts to use the replied-to message's context.
+ * Determines a conversation context ID.
  */
 function getContextId(message: Message, convIds: Map<string, string>): string {
   if (!message.guild) {
@@ -46,7 +45,7 @@ function getContextId(message: Message, convIds: Map<string, string>): string {
 }
 
 /**
- * Helper: Creates a ChatMessage object.
+ * Creates a ChatMessage object.
  */
 function createChatMessage(
   message: Message,
@@ -67,7 +66,7 @@ function createChatMessage(
 }
 
 /**
- * Helper: Sanitises a username.
+ * Sanitises a username.
  */
 function sanitiseUsername(username: string): string {
   const clean = username.replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 64);
@@ -75,7 +74,7 @@ function sanitiseUsername(username: string): string {
 }
 
 /**
- * Generates a reply using the conversation context and persistent memory.
+ * Generates a reply using conversation context and persistent memory.
  */
 async function generateReply(
   messages: Map<string, ChatMessage>,
@@ -87,18 +86,18 @@ async function generateReply(
     [];
   let currentId: string | undefined = currentMessageId;
 
-  // Walk back through the conversation reply chain.
   while (currentId) {
     const msg = messages.get(currentId);
     if (!msg) break;
     const sanitized = removeAtSymbols(msg.content);
     const content =
-      msg.role === "user" ? `<@${msg.userId}> asked: ${sanitized}` : sanitized;
+      msg.role === "user" && msg.userId
+        ? `<@${msg.userId}> asked: ${sanitized}`
+        : sanitized;
     context.unshift({ role: msg.role, content });
     currentId = msg.replyToId;
   }
 
-  // Retrieve long-term memory for this user.
   const memoryEntries = userMemory.get(contextKey) || [];
   const memoryContent = memoryEntries.map((entry) => entry.content).join("\n");
   if (memoryContent) {
@@ -156,22 +155,13 @@ function summarizeConversation(context: ConversationContext): string {
     .join(" ");
 }
 
-// ----------------------------------------------------------------
-// In-memory conversation storage and mappings.
-// ----------------------------------------------------------------
 const conversationHistories: Map<
   string,
   Map<string, ConversationContext>
 > = new Map();
 const conversationIdMap: Map<string, Map<string, string>> = new Map();
-
-// Threshold for summarization.
 const CONVERSATION_MESSAGE_LIMIT = 10;
 
-/**
- * Entry point for processing new messages.
- * Uses the user's ID as the key so persistent memory travels across sessions.
- */
 export async function handleNewMessage(openai: OpenAI, client: Client) {
   return async function (message: Message<boolean>): Promise<void> {
     if (message.author.bot) return;
@@ -179,13 +169,11 @@ export async function handleNewMessage(openai: OpenAI, client: Client) {
     const contextKey = userId;
     initialiseConversationData(contextKey);
 
-    // In DMs, always send typing indicator.
     if (!message.guild) {
       if (message.channel.isTextBased() && "sendTyping" in message.channel) {
         message.channel.sendTyping();
       }
     } else {
-      // In guilds, only send typing if the bot is mentioned and the user is not the clone.
       if (
         message.author.id !== cloneUserId &&
         message.mentions.has(client.user?.id ?? "")
@@ -199,16 +187,12 @@ export async function handleNewMessage(openai: OpenAI, client: Client) {
   };
 }
 
-/**
- * Process a message: update conversation context, persistent memory, and generate a reply.
- */
 async function processMessage(
   message: Message<boolean>,
   contextKey: string,
   openai: OpenAI,
   client: Client
 ): Promise<void> {
-  // If this message is from the clone user, update the clone memory and do not reply.
   if (message.author.id === cloneUserId) {
     await updateCloneMemory(cloneUserId, {
       timestamp: Date.now(),
@@ -217,16 +201,13 @@ async function processMessage(
     return;
   }
 
-  // Retrieve the conversation IDs map for this user.
   const convIds = conversationIdMap.get(contextKey)!;
   const contextId: string = getContextId(message, convIds);
   const guildId = message.guild ? message.guild.id : null;
   const cooldownContext = getCooldownContext(guildId, message.author.id);
 
   if (useCooldown && isCooldownActive(cooldownContext)) {
-    const currentCooldown = guildId
-      ? defaultCooldownConfig.cooldownTime.toFixed(2)
-      : defaultCooldownConfig.cooldownTime.toFixed(2);
+    const currentCooldown = defaultCooldownConfig.cooldownTime.toFixed(2);
     const cooldownMsg = await message.reply(
       `You're sending messages too quickly. The server cooldown is set to ${currentCooldown} seconds. Please wait before asking another question.`
     );
@@ -240,7 +221,6 @@ async function processMessage(
     manageCooldown(guildId, message.author.id);
   }
 
-  // Retrieve or create the conversation history.
   const convHist = conversationHistories.get(contextKey)!;
   const conversationContext: ConversationContext = convHist.get(contextId) || {
     messages: new Map<string, ChatMessage>(),
@@ -248,7 +228,6 @@ async function processMessage(
   convHist.set(contextId, conversationContext);
   convIds.set(message.id, contextId);
 
-  // Create a chat message from the user's message.
   const newMsg: ChatMessage = createChatMessage(
     message,
     "user",
@@ -256,10 +235,8 @@ async function processMessage(
   );
   conversationContext.messages.set(message.id, newMsg);
 
-  // If conversation history is too long, summarize and update persistent memory.
   if (conversationContext.messages.size >= CONVERSATION_MESSAGE_LIMIT) {
     const summary = summarizeConversation(conversationContext);
-    // Instead of using newMsg.name or raw userId, use the mention format:
     await updateUserMemory(newMsg.userId!, {
       timestamp: Date.now(),
       content: `Conversation ${contextKey} (asked by <@${newMsg.userId}>): ${summary}`,
@@ -277,19 +254,18 @@ async function processMessage(
     const fixedReply = fixMentions(replyContent);
     const sentMessage = await message.reply(fixedReply);
 
-    // Record the bot's reply.
     const botMsg: ChatMessage = createChatMessage(
       sentMessage,
       "assistant",
       client.user?.username ?? "Bot"
     );
     conversationContext.messages.set(sentMessage.id, botMsg);
-    convIds.set(sentMessage.id, contextId);
+    convIds.set(sentMessage.id, contextKey);
 
     const summary = summarizeConversation(conversationContext);
     await updateUserMemory(newMsg.userId!, {
       timestamp: Date.now(),
-      content: `Conversation ${contextKey} (asked by ${newMsg.name}): ${summary}`,
+      content: `Conversation ${contextKey} (asked by <@${newMsg.userId}>): ${summary}`,
     });
     await ensureFileExists(
       [contextKey],
@@ -301,9 +277,6 @@ async function processMessage(
   }
 }
 
-/**
- * Logs errors and notifies the user.
- */
 async function handleError(
   message: Message<boolean>,
   error: unknown
@@ -312,9 +285,6 @@ async function handleError(
   await message.reply("An error occurred while processing your request.");
 }
 
-/**
- * Initializes conversation storage for a given key.
- */
 function initialiseConversationData(key: string): void {
   if (!conversationHistories.has(key)) {
     conversationHistories.set(key, new Map());
@@ -323,9 +293,6 @@ function initialiseConversationData(key: string): void {
   markContextAsUpdated(key);
 }
 
-/**
- * Exposes a run function for startup initialization.
- */
 export async function run(client: Client): Promise<void> {
   try {
     const guildIds: string[] = Array.from(client.guilds.cache.keys());
