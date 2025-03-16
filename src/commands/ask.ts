@@ -21,16 +21,10 @@ export const data = new SlashCommandBuilder()
 export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
-  // Defer the reply as ephemeral so only the user sees it.
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const question = interaction.options.getString("question", true);
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  // Create a new OpenAI client instance.
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-
-  // Build a simple prompt using a system message and the user's question.
   const prompt: ChatCompletionMessageParam[] = [
     {
       role: "system",
@@ -54,7 +48,6 @@ export async function execute(
     });
     const answer = response.choices[0]?.message.content;
     if (!answer) throw new Error("No answer returned from OpenAI.");
-    // Edit the deferred reply (ephemeral flag already applies).
     await interaction.editReply({ content: answer });
   } catch (error: unknown) {
     console.error("Error processing /ask command:", error);

@@ -1,22 +1,27 @@
 import { GeneralMemoryEntry } from "../types/types.js";
 import { loadUserMemory, saveUserMemory } from "../utils/fileUtils.js";
 
-export let userMemory = new Map<string, GeneralMemoryEntry[]>();
+export const userMemory = new Map<string, GeneralMemoryEntry[]>();
 
 export async function initializeUserMemory(): Promise<void> {
-  // Optionally, you could scan USER_MEMORY_DIRECTORY to preload memory.
-  userMemory = new Map();
+  userMemory.clear();
 }
 
 export async function updateUserMemory(
   userId: string,
   entry: GeneralMemoryEntry
 ): Promise<void> {
-  let entries = userMemory.get(userId);
-  if (!entries) {
-    entries = await loadUserMemory(userId);
+  try {
+    const formattedEntry: GeneralMemoryEntry = {
+      ...entry,
+      content: `<@${userId}>: ${entry.content}`,
+    };
+    const existingEntries =
+      userMemory.get(userId) ?? (await loadUserMemory(userId)) ?? [];
+    const updatedEntries = [...existingEntries, formattedEntry];
+    userMemory.set(userId, updatedEntries);
+    await saveUserMemory(userId, updatedEntries);
+  } catch (error) {
+    console.error(`Failed to update user memory for user ${userId}:`, error);
   }
-  entries.push(entry);
-  userMemory.set(userId, entries);
-  await saveUserMemory(userId, entries);
 }
