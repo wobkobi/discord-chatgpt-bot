@@ -78,7 +78,7 @@ For support, please open an issue on the [GitHub repository](https://github.com/
 
 ## Conclusion
 
-This bot provides a powerful way to add AI-driven interactions to your Discord server. Customize it to fit your needs—especially by editing the `characterDescription.ts` file—and enjoy the advanced capabilities of GPT-3.5 in your community.
+This bot provides a powerful way to add AI-driven interactions to your Discord server. Customize it to fit your needs—especially by editing the `characterDescription.ts` file—and enjoy the advanced capabilities of GPT-4o in your community.
 
 ---
 
