@@ -1,85 +1,94 @@
-Below is the updated README with the new repository name and the additional instructions regarding the character description file and the new .env.example:
+# Discord ChatGPT Bot
 
----
-
-# ChatGPT-Discord-Bot
-
-## Overview
-
-This Discord bot integrates OpenAI's GPT-4o model to provide interactive, AI-driven responses. It handles chat completions, offers concise replies, and adapts to conversation contexts dynamically.
+A Discord bot built with Discord.js and OpenAI's ChatGPT integration that supports conversation memory, dynamic emoji usage, cooldown management, and clone memory functionality.
 
 ## Features
 
-- **AI Conversations:** Engage in natural, flowing dialogues powered by GPT-4o.
-- **Context Management:** Maintains conversation history to provide relevant responses.
-- **Customizable Responses:** Adjust reply length and style via settings.
-- **Character Customization:** Easily modify the bot's personality by editing the character description file.
+- **Interactive Conversation Handling:**  
+  Supports persistent conversation context with memory functions for individual users, clones, and guild-level memory.
+- **Dynamic Emoji Usage:**  
+  Retrieves and uses custom server emojis to enhance bot responses.
+- **Cooldown Management:**  
+  Prevents spam by enforcing cooldowns on commands and messages.
+- **Clone Memory Enhancements:**  
+  Logs interactions, including how other users engage with the cloned user, to help the bot learn conversation styles.
+- **Slash Commands:**  
+  Easily interact with the bot using commands such as `/ask`, `/setcooldown`, and `/stop`.
 
-## Prerequisites
+## Installation
 
-- Node.js (v18 or higher recommended)
-- Discord.js library
-- OpenAI API key
-
-## Setup
-
-1. **Clone the Repository**
+1. **Clone the Repository:**
 
    ```bash
    git clone https://github.com/wobkobi/ChatGPT-Discord-Bot.git
    cd ChatGPT-Discord-Bot
    ```
 
-2. **Install Dependencies**
+2. **Install Dependencies:**
 
    ```bash
    npm install
    ```
 
-3. **Configure Environment**
+3. **Rename the Character Description File:**
 
-   Rename the `.env.example` file to `.env` and update it with your credentials:
-
-   ```env
-   # REQUIRED:
-   OPENAI_API_KEY="your_openai_api_key"
-   BOT_TOKEN="your_discord_bot_token"
-   Client_ID="your_bot_client_id"
-   OWNER_ID="your_owner_user_id"
-
-   # OPTIONAL:
-   # If you want to use a different encryption key, set it here.
-   ENCRYPTION_KEY_BASE="your_encryption_key"
-   ```
-
-4. **Customize Bot Personality**
-
-   Rename the `src/data/characterDescription.ts.example` file to `src/data/characterDescription.ts` and edit it to reflect the personality you want your bot to have. This file defines how the bot introduces itself and behaves in conversations.
-
-5. **Run the Bot**
+   The repository includes a sample file for the character description. Rename `characterDescription.ts.example` to `characterDescription.ts`:
 
    ```bash
-   npm run start
+   mv src/data/characterDescription.ts.example src/data/characterDescription.ts
    ```
 
-## Usage
+   _(On Windows, you can rename the file manually via File Explorer or use the `rename` command in Command Prompt.)_
 
-Invite the bot to your Discord server and interact with it by mentioning the bot or using its slash commands. For example:
+## Configuration
 
+Create a `.env` file in the root directory with the following environment variables:
+
+```dotenv
+BOT_TOKEN=your_discord_bot_token
+CLIENT_ID=your_discord_client_id
+OWNER_ID=your_discord_owner_id
+OPENAI_API_KEY=your_openai_api_key
+ENCRYPTION_KEY_BASE=your_encryption_key_base
 ```
-@BotName How's the weather today?
+
+These keys are essential for authenticating with Discord, OpenAI, and for encrypting stored memory data.
+
+## Running the Bot
+
+Start the bot using:
+
+```bash
+npm run start
 ```
 
-The bot will reply based on its AI capabilities and the parameters set for conversation length and complexity.
+The bot will register its slash commands, initialize memory, and start listening for messages and interactions.
 
-## Support
+## Commands
 
-For support, please open an issue on the [GitHub repository](https://github.com/wobkobi/ChatGPT-Discord-Bot).
+- **/ask:** Ask the bot a question privately.
+- **/setcooldown:** _(Owner only)_ Configure the cooldown settings for the server.
+- **/stop:** _(Owner only)_ Safely stop the bot.
 
-## Conclusion
+## Memory Handling
 
-This bot provides a powerful way to add AI-driven interactions to your Discord server. Customize it to fit your needs—especially by editing the `characterDescription.ts` file—and enjoy the advanced capabilities of GPT-4o in your community.
+The bot maintains three types of memory:
 
----
+- **User Memory:**  
+  Stores conversation summaries for individual users, formatting messages with proper Discord mentions.
 
-Feel free to adjust any sections as needed.
+- **Clone Memory:**  
+  Stores conversation context for the clone user, including extra context such as interaction details (e.g., which user interacted with the clone).
+
+- **General Memory:**  
+  Stores guild-level conversation summaries.
+
+Each memory module is designed to ensure that the conversation context is preserved and formatted appropriately.
+
+## Contributing
+
+Contributions are welcome! Please open issues or submit pull requests for improvements or new features.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
