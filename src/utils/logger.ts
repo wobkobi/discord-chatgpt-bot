@@ -10,21 +10,25 @@ const logFormat = printf((info: TransformableInfo) => {
   return `[${timestamp}] [${level.toUpperCase()}]: ${stack || message}`;
 });
 
-// Daily rotate file transport for error logs.
-const errorRotateTransport = new DailyRotateFile({
-  filename: "logs/error-%DATE%.log",
-  datePattern: "YYYY-MM-DD",
-  level: "error",
-  maxSize: "10m",
-  maxFiles: "14d", // Keep logs for 14 days
-});
-
-// Daily rotate file transport for combined logs.
+// Combined logs: stored in the root logs folder with filename as the date, and a symlink "latest.log"
 const combinedRotateTransport = new DailyRotateFile({
-  filename: "logs/combined-%DATE%.log",
+  filename: "logs/%DATE%.log",
   datePattern: "YYYY-MM-DD",
   maxSize: "10m",
   maxFiles: "14d",
+  createSymlink: true,
+  symlinkName: "latest.log",
+});
+
+// Error logs: stored in the "logs/error" folder with filename as the date, and a symlink "error-latest.log"
+const errorRotateTransport = new DailyRotateFile({
+  filename: "logs/error/%DATE%.log",
+  datePattern: "YYYY-MM-DD",
+  level: "error",
+  maxSize: "10m",
+  maxFiles: "14d",
+  createSymlink: true,
+  symlinkName: "error-latest.log",
 });
 
 // Create the logger instance with console and rotating file transports.
