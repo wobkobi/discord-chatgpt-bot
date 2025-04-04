@@ -1,13 +1,19 @@
-import {
-  ChatInputCommandInteraction,
-  MessageFlags,
-  SlashCommandBuilder,
-} from "discord.js";
+import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import logger from "../utils/logger.js";
 
+/**
+ * Slash command data for stopping the bot.
+ */
 export const data = new SlashCommandBuilder()
   .setName("stop")
   .setDescription("Safely stop the bot (Owner only)");
 
+/**
+ * Executes the stop command. Only the bot owner can run this command.
+ * The command replies with an ephemeral message and then shuts down the bot.
+ *
+ * @param interaction - The command interaction.
+ */
 export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
@@ -15,20 +21,23 @@ export async function execute(
   if (!ownerId) {
     await interaction.reply({
       content: "Bot owner is not set up.",
-      flags: MessageFlags.Ephemeral,
+      ephemeral: true,
     });
     return;
   }
+
   if (interaction.user.id !== ownerId) {
     await interaction.reply({
       content: "Sorry, not allowed.",
-      flags: MessageFlags.Ephemeral,
+      ephemeral: true,
     });
     return;
   }
+
   await interaction.reply({
     content: "Bot is shutting down...",
-    flags: MessageFlags.Ephemeral,
+    ephemeral: true,
   });
+  logger.info("Bot is shutting down by owner command.");
   setTimeout(() => process.exit(0), 1000);
 }

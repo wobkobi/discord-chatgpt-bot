@@ -1,16 +1,16 @@
-import {
-  ChatInputCommandInteraction,
-  MessageFlags,
-  SlashCommandBuilder,
-} from "discord.js";
+import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import {
   defaultCooldownConfig,
   guildCooldownConfigs,
   saveGuildCooldownConfigs,
 } from "../config.js";
+import logger from "../utils/logger.js";
 
 const ownerId = process.env.OWNER_ID || "defaultOwnerId";
 
+/**
+ * Slash command definition for setting cooldown configurations.
+ */
 export const data = new SlashCommandBuilder()
   .setName("setcooldown")
   .setDescription(
@@ -37,13 +37,19 @@ export const data = new SlashCommandBuilder()
       .setRequired(false)
   );
 
+/**
+ * Executes the setcooldown command.
+ * Only the bot owner can execute this command in a server.
+ *
+ * @param interaction - The command interaction object.
+ */
 export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
   if (interaction.user.id !== ownerId) {
     await interaction.reply({
       content: "You do not have permission to configure cooldown settings.",
-      flags: MessageFlags.Ephemeral,
+      ephemeral: true,
     });
     return;
   }
@@ -51,7 +57,7 @@ export async function execute(
   if (!interaction.guildId) {
     await interaction.reply({
       content: "This command can only be used in a server.",
-      flags: MessageFlags.Ephemeral,
+      ephemeral: true,
     });
     return;
   }
@@ -66,7 +72,7 @@ export async function execute(
     await saveGuildCooldownConfigs();
     await interaction.reply({
       content: "Cooldown settings have been reset to factory defaults.",
-      flags: MessageFlags.Ephemeral,
+      ephemeral: true,
     });
     return;
   }
@@ -85,6 +91,7 @@ export async function execute(
   await saveGuildCooldownConfigs();
   await interaction.reply({
     content: `Cooldown settings updated: cooldown time is now ${cooldownTimeInSeconds} seconds, and cooldown is ${perUserCooldown ? "per user" : "global to the server"}.`,
-    flags: MessageFlags.Ephemeral,
+    ephemeral: true,
   });
+  logger.info(`Updated cooldown settings for guild ${interaction.guildId}`);
 }

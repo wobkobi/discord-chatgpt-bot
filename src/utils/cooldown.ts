@@ -1,10 +1,10 @@
-import { defaultCooldownConfig, guildCooldownConfigs } from "../config.js";
+import {
+  defaultCooldownConfig,
+  GuildCooldownConfig,
+  guildCooldownConfigs,
+} from "../config.js";
 
-function getCooldownConfig(guildId: string | null): {
-  useCooldown: boolean;
-  cooldownTime: number;
-  perUserCooldown: boolean;
-} {
+function getCooldownConfig(guildId: string | null): GuildCooldownConfig {
   if (!guildId) return defaultCooldownConfig;
   return guildCooldownConfigs.get(guildId) || defaultCooldownConfig;
 }
