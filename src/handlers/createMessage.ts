@@ -33,30 +33,20 @@ function fixMentions(content: string): string {
 }
 
 /**
- * Wraps math expressions (detected as text within square brackets containing a backslash)
+ * Wraps math expressions (text within square brackets containing a backslash)
  * in inline code formatting.
- *
- * Example: [ t = \frac{v_f - v_i}{a} ] becomes ` [ t = \frac{v_f - v_i}{a} ] `
- *
- * @param content - The text content to process.
- * @returns The processed text with math expressions wrapped in backticks.
  */
 function fixMathFormatting(content: string): string {
   return content.replace(/(\[[^\]]*\\[^\]]*\])/g, (match) => `\`${match}\``);
 }
 
 /**
- * Applies Discord markdown formatting to the given text.
- * It fixes mentions, applies math formatting, and if the text spans multiple lines,
- * wraps the entire text in a code block.
- *
- * @param text - The text to format.
- * @returns The text formatted with Discord markdown.
+ * Applies Discord markdown formatting to the provided text.
+ * If the text spans multiple lines, it wraps it in a multiline code block.
  */
 function applyDiscordMarkdownFormatting(text: string): string {
   let formatted = fixMentions(text);
   formatted = fixMathFormatting(formatted);
-  // If the formatted text contains newlines, wrap it in a multiline code block.
   if (formatted.includes("\n")) {
     formatted = "```\n" + formatted + "\n```";
   }
@@ -187,6 +177,7 @@ function summarizeConversation(context: ConversationContext): string {
     .join(" ");
 }
 
+// In-memory conversation storage.
 const conversationHistories: Map<
   string,
   Map<string, ConversationContext>
@@ -196,6 +187,8 @@ const CONVERSATION_MESSAGE_LIMIT = 10;
 
 /**
  * Handles a new message event: builds context, applies cooldowns, and generates a reply.
+ * When interjecting (determined by random chance), fetches the last 50 messages from the channel
+ * along with sender and timestamp details for context.
  */
 export async function handleNewMessage(openai: OpenAI, client: Client) {
   return async function (message: Message<boolean>): Promise<void> {
@@ -223,7 +216,8 @@ export async function handleNewMessage(openai: OpenAI, client: Client) {
 }
 
 /**
- * Processes an incoming message: updates history, checks cooldowns, fetches context, and sends a reply.
+ * Processes an incoming message: updates history, checks cooldowns, fetches context,
+ * and sends a reply.
  */
 async function processMessage(
   message: Message<boolean>,
@@ -231,12 +225,16 @@ async function processMessage(
   openai: OpenAI,
   client: Client
 ): Promise<void> {
-  // Update clone memory even if the message is from the clone.
-  if (message.author.id === cloneUserId) {
+  // If the message is from the clone user and the bot is not mentioned, update clone memory and exit.
+  if (
+    message.author.id === cloneUserId &&
+    !message.mentions.has(client.user?.id ?? "")
+  ) {
     await updateCloneMemory(cloneUserId, {
       timestamp: Date.now(),
       content: message.content,
     });
+    return;
   }
 
   const convIds = conversationIdMap.get(contextKey)!;
@@ -274,11 +272,11 @@ async function processMessage(
   );
   conversationContext.messages.set(message.id, newMsg);
 
-  // If in a guild and the bot is interjecting, fetch recent channel history.
+  // If in a guild and the bot is interjecting (i.e. not mentioned), fetch the last 50 messages for context.
   if (message.guild && !message.mentions.has(client.user?.id ?? "")) {
     try {
       const fetchedMessages = await message.channel.messages.fetch({
-        limit: 10,
+        limit: 50,
       });
       const sortedMessages = Array.from(fetchedMessages.values()).sort(
         (a, b) => a.createdTimestamp - b.createdTimestamp
@@ -288,11 +286,18 @@ async function processMessage(
           !fetchedMsg.author.bot &&
           !conversationContext.messages.has(fetchedMsg.id)
         ) {
-          const chatMsg = createChatMessage(
-            fetchedMsg,
-            "user",
-            client.user?.username ?? "Bot"
-          );
+          const timestamp = new Date(
+            fetchedMsg.createdTimestamp
+          ).toLocaleString();
+          const formattedContent = `${fetchedMsg.author.username} (sent at ${timestamp}): ${fetchedMsg.content}`;
+          const chatMsg: ChatMessage = {
+            id: fetchedMsg.id,
+            role: "user",
+            name: fetchedMsg.author.username,
+            userId: fetchedMsg.author.id,
+            content: formattedContent,
+            replyToId: fetchedMsg.reference?.messageId,
+          };
           conversationContext.messages.set(fetchedMsg.id, chatMsg);
         }
       }
@@ -368,7 +373,7 @@ function initialiseConversationData(key: string): void {
 }
 
 /**
- * Initializes conversation storage from disk on startup.
+ * Loads conversation storage from disk on startup.
  */
 export async function run(client: Client): Promise<void> {
   try {

@@ -1,5 +1,6 @@
 import { TransformableInfo } from "logform";
 import winston from "winston";
+import DailyRotateFile from "winston-daily-rotate-file";
 
 const { combine, timestamp, printf, colorize, errors } = winston.format;
 
@@ -9,7 +10,24 @@ const logFormat = printf((info: TransformableInfo) => {
   return `[${timestamp}] [${level.toUpperCase()}]: ${stack || message}`;
 });
 
-// Create the logger instance with console and file transports.
+// Daily rotate file transport for error logs.
+const errorRotateTransport = new DailyRotateFile({
+  filename: "logs/error-%DATE%.log",
+  datePattern: "YYYY-MM-DD",
+  level: "error",
+  maxSize: "10m",
+  maxFiles: "14d", // Keep logs for 14 days
+});
+
+// Daily rotate file transport for combined logs.
+const combinedRotateTransport = new DailyRotateFile({
+  filename: "logs/combined-%DATE%.log",
+  datePattern: "YYYY-MM-DD",
+  maxSize: "10m",
+  maxFiles: "14d",
+});
+
+// Create the logger instance with console and rotating file transports.
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || "info",
   format: combine(
@@ -26,23 +44,8 @@ const logger = winston.createLogger({
         logFormat
       ),
     }),
-    new winston.transports.File({
-      filename: "logs/error.log",
-      level: "error",
-      format: combine(
-        timestamp({ format: "HH:mm:ss" }),
-        errors({ stack: true }),
-        logFormat
-      ),
-    }),
-    new winston.transports.File({
-      filename: "logs/combined.log",
-      format: combine(
-        timestamp({ format: "HH:mm:ss" }),
-        errors({ stack: true }),
-        logFormat
-      ),
-    }),
+    errorRotateTransport,
+    combinedRotateTransport,
   ],
 });
 
