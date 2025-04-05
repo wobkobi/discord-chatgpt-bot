@@ -5,6 +5,7 @@ import {
   Collection,
   GatewayIntentBits,
   Interaction,
+  Message,
   Partials,
 } from "discord.js";
 import dotenv from "dotenv";
@@ -75,47 +76,42 @@ async function registerGlobalCommands(): Promise<void> {
   }
 }
 
-// When the bot is ready, register commands, initialize memory, and run handlers.
-client.once("ready", async () => {
-  logger.info("Bot is ready.");
-  await registerGlobalCommands();
-  await initializeGeneralMemory();
-  await initializeUserMemory();
-  logger.info("Memory initialized.");
-  await run(client);
-});
-
-// Create an OpenAI client instance.
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Create a single OpenAI client instance.
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Process incoming messages.
-client.on("messageCreate", async (message) => {
-  // Ignore messages from bots.
+client.on("messageCreate", async (message: Message) => {
   if (message.author.bot) return;
 
-  // Process DMs immediately.
+  // Process direct messages immediately.
   if (!message.guild) {
     (await handleNewMessage(openai, client))(message);
     return;
   }
 
-  // Always process messages from the clone user.
-  if (message.author.id === cloneUserId) {
+  // For guild messages from the clone user:
+  // If the clone user does not mention the bot, update clone memory and do not reply.
+  if (
+    message.author.id === cloneUserId &&
+    !message.mentions.has(client.user?.id ?? "")
+  ) {
     (await handleNewMessage(openai, client))(message);
     return;
   }
 
-  // Process guild messages only when the bot is mentioned (and not in @everyone mentions).
-  if (
-    !message.mentions.has(client.user?.id ?? "") ||
-    message.mentions.everyone
-  ) {
-    return;
-  }
+  // For other guild messages, check if the bot is mentioned.
+  const isMentioned = message.mentions.has(client.user?.id ?? "");
+  // Generate a random chance to interject (1 in 50 chance).
+  const randomChance = Math.random();
+  const shouldInterject = randomChance < 1 / 50;
+  logger.info(
+    `Random chance for interjection: ${randomChance.toFixed(4)} (should interject: ${shouldInterject})`
+  );
 
-  (await handleNewMessage(openai, client))(message);
+  // Process the message if the bot is mentioned or if interjection condition is met.
+  if (isMentioned || shouldInterject) {
+    (await handleNewMessage(openai, client))(message);
+  }
 });
 
 // Handle slash command interactions.
@@ -137,6 +133,16 @@ client.on("interactionCreate", async (interaction: Interaction) => {
       await interaction.reply(replyOptions);
     }
   }
+});
+
+// When the bot is ready, register commands, initialize memory, and run handlers.
+client.once("ready", async () => {
+  logger.info("Bot is ready.");
+  await registerGlobalCommands();
+  await initializeGeneralMemory();
+  await initializeUserMemory();
+  logger.info("Memory initialized.");
+  await run(client);
 });
 
 // Log in the bot.
