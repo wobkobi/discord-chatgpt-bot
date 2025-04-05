@@ -187,12 +187,15 @@ const CONVERSATION_MESSAGE_LIMIT = 10;
 
 /**
  * Handles a new message event: builds context, applies cooldowns, and generates a reply.
- * When interjecting (determined by random chance), fetches the last 50 messages from the channel
- * along with sender and timestamp details for context.
+ * If the message includes @everyone or @here, the bot will ignore it.
+ * When interjecting (triggered by random chance), it fetches the last 50 messages (with sender and timestamp) for context.
  */
 export async function handleNewMessage(openai: OpenAI, client: Client) {
   return async function (message: Message<boolean>): Promise<void> {
     if (message.author.bot) return;
+
+    // Ignore messages that mention @everyone or @here.
+    if (message.mentions.everyone) return;
 
     const userId = message.author.id;
     const contextKey = userId;
