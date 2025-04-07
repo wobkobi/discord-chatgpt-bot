@@ -2,7 +2,7 @@ import { GeneralMemoryEntry } from "../types/types.js";
 import { loadUserMemory, saveUserMemory } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
 
-// In-memory storage for user memory entries.
+/** In‑memory storage for individual user memory entries. */
 export const userMemory = new Map<string, GeneralMemoryEntry[]>();
 
 /**
@@ -13,18 +13,18 @@ export async function initializeUserMemory(): Promise<void> {
 }
 
 /**
- * Updates the user memory by appending a new memory entry,
- * then saves the updated entries to disk.
+ * Updates the memory for a specific user by appending a new memory entry,
+ * then persists the updated memory to disk.
  *
  * @param userId - The ID of the user.
- * @param entry - The new memory entry to add.
+ * @param entry - The new memory entry.
  */
 export async function updateUserMemory(
   userId: string,
   entry: GeneralMemoryEntry
 ): Promise<void> {
   try {
-    const existingEntries =
+    const existingEntries: GeneralMemoryEntry[] =
       userMemory.get(userId) ?? (await loadUserMemory(userId)) ?? [];
     const updatedEntries = [...existingEntries, entry];
     userMemory.set(userId, updatedEntries);
