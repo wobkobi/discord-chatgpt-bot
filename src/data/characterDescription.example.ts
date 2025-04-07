@@ -24,7 +24,6 @@ function fixMathFormatting(text: string): string {
  */
 function applyDiscordMarkdownFormatting(text: string): string {
   let formatted = fixMathFormatting(text);
-  formatted = fixMathFormatting(formatted);
   return formatted;
 }
 
