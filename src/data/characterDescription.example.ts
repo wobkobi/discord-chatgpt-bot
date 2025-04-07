@@ -24,9 +24,7 @@ function fixMathFormatting(text: string): string {
  */
 function applyDiscordMarkdownFormatting(text: string): string {
   let formatted = fixMathFormatting(text);
-  if (formatted.includes("\n")) {
-    formatted = "```\n" + formatted + "\n```";
-  }
+  formatted = fixMathFormatting(formatted);
   return formatted;
 }
 
@@ -76,7 +74,32 @@ export async function getCharacterDescription(
 
   // Append a section explaining Discord markdown formatting capabilities.
   description +=
-    "\n\n```md\nDiscord Markdown Formatting Capabilities:\n- Italics: *text* or _text_\n- Bold: **text**\n- Underline: __text__\n- Strikethrough: ~~text~~\n- Inline code: use a single backtick at the beginning and end, e.g. `text`\n- Multiline code blocks: wrap your text with three backticks (```), optionally specifying a language\n- Block quotes: start a line with `>`\n```";
+    "\n\n```md\nDiscord Markdown Formatting Guide:\n\n" +
+    "**Text Formatting**\n" +
+    "- Italics: *italics* or _italics_\n" +
+    "- Underline italics: __*underline italics*__\n" +
+    "- Bold: **bold**\n" +
+    "- Underline bold: __**underline bold**__\n" +
+    "- Bold italics: ***bold italics***\n" +
+    "- Underline bold italics: __***underline bold italics***__\n" +
+    "- Underline: __underline__\n" +
+    "- Strikethrough: ~~Strikethrough~~\n\n" +
+    "**Organizational Formatting**\n" +
+    "- Headers: # Header, ## Subheader, ### Subsubheader\n" +
+    "- Subtext: -# subtext\n" +
+    "- Masked links: [label](https://example.com)\n" +
+    "- Unordered lists: - item or * item\n" +
+    "- Ordered lists: 1. item\n\n" +
+    "**Code Blocks**\n" +
+    "- Inline code: `code`\n" +
+    "- Multiline code block:\n```js\ncode line 1\ncode line 2\n```\n\n" +
+    "**Block Quotes**\n" +
+    "- Single-line: > quote\n" +
+    "- Multi-line: >>>\nquote line 1\nquote line 2\n\n" +
+    "**Supported Code Block Languages**\n" +
+    "- asciidoc, autohotkey, bash, coffeescript, cpp (C++), cs (C#), css,\n" +
+    "  diff, fix, glsl, ini, json, md (markdown), ml, prolog, ps, py,\n" +
+    "  tex, xl, xml, yaml\n```";
 
   // Return the description formatted with Discord markdown.
   return applyDiscordMarkdownFormatting(description);
