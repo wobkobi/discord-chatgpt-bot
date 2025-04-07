@@ -53,7 +53,7 @@ export async function execute(
   try {
     // Request a completion from OpenAI.
     const response = await openai.chat.completions.create({
-      model: "gpt-4.5-preview",
+      model: "gpt-4o",
       messages: prompt,
       max_tokens: 1000,
       top_p: 0.6,
