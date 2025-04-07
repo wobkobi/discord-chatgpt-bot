@@ -45,12 +45,7 @@ function fixMathFormatting(content: string): string {
  * If the text spans multiple lines, it wraps it in a multiline code block.
  */
 function applyDiscordMarkdownFormatting(text: string): string {
-  let formatted = fixMentions(text);
-  formatted = fixMathFormatting(formatted);
-  if (formatted.includes("\n")) {
-    formatted = "```\n" + formatted + "\n```";
-  }
-  return formatted;
+  return fixMathFormatting(fixMentions(text));
 }
 
 /**
