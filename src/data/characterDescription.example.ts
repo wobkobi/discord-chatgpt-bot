@@ -1,7 +1,8 @@
 import { DateTime } from "luxon";
 import { userMemory } from "../memory/userMemory.js";
 
-export const cloneUserId = "331744864385630240";
+// If character description is based on a specific user, set their ID here, it should be able to learn from the user.
+export const cloneUserId = "";
 
 /**
  * Wraps math expressions (text within square brackets containing a backslash)
@@ -22,8 +23,7 @@ function fixMathFormatting(text: string): string {
  * @returns The formatted text.
  */
 function applyDiscordMarkdownFormatting(text: string): string {
-  let formatted = fixMathFormatting(text);
-  formatted = fixMathFormatting(formatted);
+  const formatted = fixMathFormatting(text);
   return formatted;
 }
 
