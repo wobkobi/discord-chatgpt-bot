@@ -10,23 +10,20 @@
     "build:changelog": "npx @discordx/changelog --src src",
     "dev": "nodemon --watch src --ext ts --exec \"node --loader ts-node/esm/transpile-only src/index.ts\"",
     "start": "tsc && node build/index.js",
-    "watch": "nodemon --exec npm run dev --watch src --ext ts"
+    "watch": "nodemon --exec npm run dev --watch src --ext ts",
+    "prepare": "husky"
   },
   "dependencies": {
     "@discordjs/rest": "^2.4.3",
-    "@discordx/importer": "^1.3.1",
-    "chalk": "^5.4.1",
+    "axios": "^1.8.4",
     "discord-api-types": "^0.37.119",
     "discord.js": "^14.18.0",
-    "discordx": "^11.12.2",
     "dotenv": "^16.4.7",
-    "husky": "^9.1.7",
+    "logform": "^2.7.0",
     "luxon": "^3.5.0",
     "openai": "^4.85.1",
-    "undici": "^7.3.0",
     "winston": "^3.17.0",
-    "winston-daily-rotate-file": "^5.0.0",
-    "winston-transport": "^4.9.0"
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -37,12 +34,10 @@
     "@typescript-eslint/parser": "^8.24.0",
     "eslint": "^9.20.1",
     "eslint-config-prettier": "^10.0.1",
-    "eslint-plugin-import": "^2.31.0",
-    "eslint-plugin-n": "^17.15.1",
     "eslint-plugin-prettier": "^5.2.3",
-    "eslint-plugin-promise": "^7.2.1",
     "globals": "^16.0.0",
-    "lint-staged": "^15.4.3",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.0",
     "nodemon": "^3.1.9",
     "prettier": "^3.5.1",
     "prettier-plugin-organize-imports": "^4.1.0",
