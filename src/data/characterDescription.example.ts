@@ -2,7 +2,7 @@ import { DateTime } from "luxon";
 import { userMemory } from "../memory/userMemory.js";
 
 // Hard-coded clone target user ID
-export const cloneUserId = "331744864385630240";
+export const cloneUserId = "1234567890";
 
 /**
  * Wraps math expressions (text within square brackets containing a backslash)
