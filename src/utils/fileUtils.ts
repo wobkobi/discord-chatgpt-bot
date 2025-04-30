@@ -1,8 +1,10 @@
 /**
  * fileUtils.ts
  *
- * Handles encryption/decryption, file and directory operations, and
- * persistent conversation/memory storage.
+ * - Encrypts/decrypts strings for on‐disk storage (AES-256-GCM).
+ * - Ensures directories & files exist.
+ * - Persists conversation contexts and memory blobs.
+ * - Centralised, asynchronous error logging.
  */
 
 import {
@@ -12,9 +14,9 @@ import {
   randomBytes,
 } from "crypto";
 import dotenv from "dotenv";
-import fs from "fs";
-import { writeFile } from "fs/promises";
-import { join } from "path";
+import { existsSync } from "fs";
+import fs from "fs/promises";
+import { join, resolve } from "path";
 import {
   ChatMessage,
   ConversationContext,
@@ -24,260 +26,216 @@ import logger from "./logger.js";
 
 dotenv.config();
 
-// Base directories for persistent data.
-export const BASE_DATA_DIRECTORY = "./data";
-export const CONVERSATIONS_DIRECTORY = join(
-  BASE_DATA_DIRECTORY,
-  "conversations"
-);
-export const GENERAL_MEMORY_DIRECTORY = join(
-  BASE_DATA_DIRECTORY,
-  "generalMemory"
-);
-export const USER_MEMORY_DIRECTORY = join(BASE_DATA_DIRECTORY, "userMemory");
-export const CLONE_MEMORY_DIRECTORY = join(BASE_DATA_DIRECTORY, "cloneMemory");
-export const ERRORS_DIRECTORY = join(BASE_DATA_DIRECTORY, "errors");
+// Base data directories (resolve to absolute paths)
+const DATA_DIR = resolve(process.cwd(), "data");
+const CONVERSATIONS_DIR = join(DATA_DIR, "conversations");
+const GENERAL_MEM_DIR = join(DATA_DIR, "generalMemory");
+const USER_MEM_DIR = join(DATA_DIR, "userMemory");
+const CLONE_MEM_DIR = join(DATA_DIR, "cloneMemory");
+const ERRORS_DIR = join(DATA_DIR, "errors");
 
-// Track updated conversation contexts.
-const updatedContexts: Set<string> = new Set();
+// Track which conversation contexts have changed
+const updatedConversationContexts = new Set<string>();
 
-// Set up encryption.
-const ENCRYPTION_KEY_BASE = process.env.ENCRYPTION_KEY_BASE || "";
-if (!ENCRYPTION_KEY_BASE) {
-  throw new Error("ENCRYPTION_KEY_BASE environment variable is required.");
+// AES-256-GCM setup
+const KEY_BASE = process.env.ENCRYPTION_KEY_BASE;
+if (!KEY_BASE) {
+  throw new Error("ENCRYPTION_KEY_BASE env var is required");
 }
-const ENCRYPTION_KEY = createHash("sha256")
-  .update(ENCRYPTION_KEY_BASE)
-  .digest();
+const KEY = createHash("sha256").update(KEY_BASE).digest();
 const IV_LENGTH = 16;
 
-export function encrypt(text: string): string {
+/** Encrypt a UTF-8 string into iv:ciphertext:authTag (hex) */
+export function encrypt(plain: string): string {
   const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
-  let encrypted = cipher.update(text, "utf8");
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-  const authTag = cipher.getAuthTag();
-  return `${iv.toString("hex")}:${encrypted.toString("hex")}:${authTag.toString("hex")}`;
+  const cipher = createCipheriv("aes-256-gcm", KEY, iv);
+  const encrypted = Buffer.concat([
+    cipher.update(plain, "utf8"),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString("hex")}:${encrypted.toString("hex")}:${tag.toString("hex")}`;
 }
 
-export function decrypt(text: string): string {
-  const parts = text.split(":");
-  if (parts.length !== 3) {
-    throw new Error(
-      "Invalid encrypted text format. Expected 'iv:encryptedData:authTag'."
-    );
+/** Decrypt a hex iv:ciphertext:authTag string back to UTF-8 */
+export function decrypt(enc: string): string {
+  const [ivHex, ctHex, tagHex] = enc.split(":");
+  if (!ivHex || !ctHex || !tagHex) {
+    throw new Error("Invalid encrypted format; expected iv:cipher:tag");
   }
-  const iv = Buffer.from(parts[0], "hex");
-  const encryptedText = Buffer.from(parts[1], "hex");
-  const authTag = Buffer.from(parts[2], "hex");
-  const decipher = createDecipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
+  const iv = Buffer.from(ivHex, "hex");
+  const ciphertext = Buffer.from(ctHex, "hex");
+  const authTag = Buffer.from(tagHex, "hex");
+  const decipher = createDecipheriv("aes-256-gcm", KEY, iv);
   decipher.setAuthTag(authTag);
-  let decrypted = decipher.update(encryptedText);
-  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  const decrypted = Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final(),
+  ]);
   return decrypted.toString("utf8");
 }
 
-export async function ensureDirectoryExists(
-  directoryPath: string
-): Promise<void> {
+/** Ensure a directory exists on disk, creating it recursively if needed */
+export async function ensureDir(dir: string): Promise<void> {
   try {
-    await fs.promises.access(directoryPath);
-  } catch (error: unknown) {
-    const err = error as NodeJS.ErrnoException;
-    if (err.code === "ENOENT") {
-      await fs.promises.mkdir(directoryPath, { recursive: true });
-    } else {
-      throw error;
-    }
+    await fs.access(dir);
+  } catch {
+    await fs.mkdir(dir, { recursive: true });
   }
 }
 
-export async function ensureFileExists(
-  contextKeys: string[],
-  conversationHistories: Map<string, Map<string, ConversationContext>>,
-  conversationIdMap: Map<string, Map<string, string>>
-): Promise<void> {
-  await Promise.all(
-    contextKeys.map((key) =>
-      loadConversations(key, conversationHistories, conversationIdMap)
-    )
-  );
-}
-
 /**
- * Generic function to save memory entries to disk.
+ * Persist a JSON‐serialisable array of memory entries to a binary file.
+ * @param dir  target directory
+ * @param id   key (userId or guildId)
+ * @param entries  memory entries
  */
 export async function saveMemory(
-  directory: string,
+  dir: string,
   id: string,
   entries: GeneralMemoryEntry[]
 ): Promise<void> {
-  await ensureDirectoryExists(directory);
-  const filePath = join(directory, `${id}.bin`);
-  const data = JSON.stringify(entries);
-  await writeFile(filePath, encrypt(data), "utf-8");
+  await ensureDir(dir);
+  const raw = JSON.stringify(entries);
+  const path = join(dir, `${id}.bin`);
+  await fs.writeFile(path, encrypt(raw), "utf8");
 }
 
 /**
- * Generic function to load memory entries from disk.
+ * Load memory entries for a given ID; returns [] if none exist or on error.
+ * @param dir  source directory
+ * @param id   key (userId or guildId)
  */
 export async function loadMemory(
-  directory: string,
+  dir: string,
   id: string
 ): Promise<GeneralMemoryEntry[]> {
-  await ensureDirectoryExists(directory);
-  const filePath = join(directory, `${id}.bin`);
-  if (!fs.existsSync(filePath)) {
-    return [];
-  }
+  await ensureDir(dir);
+  const path = join(dir, `${id}.bin`);
+  if (!existsSync(path)) return [];
   try {
-    const encryptedData = await fs.promises.readFile(filePath, "utf-8");
-    const decrypted = decrypt(encryptedData);
-    return JSON.parse(decrypted) as GeneralMemoryEntry[];
-  } catch (error: unknown) {
-    logger.error(`Error loading memory for ${id} from ${directory}:`, error);
+    const enc = await fs.readFile(path, "utf8");
+    return JSON.parse(decrypt(enc)) as GeneralMemoryEntry[];
+  } catch (err) {
+    logger.error(`Failed loading memory ${id} from ${dir}:`, err);
     return [];
   }
 }
 
-// Specific memory functions.
-export async function saveGeneralMemoryForGuild(
-  guildId: string,
-  entries: GeneralMemoryEntry[]
-): Promise<void> {
-  await saveMemory(GENERAL_MEMORY_DIRECTORY, guildId, entries);
-}
+// Convenience wrappers
+export const saveGeneralMemoryForGuild = (
+  gid: string,
+  e: GeneralMemoryEntry[]
+) => saveMemory(GENERAL_MEM_DIR, gid, e);
+export const loadGeneralMemoryForGuild = (gid: string) =>
+  loadMemory(GENERAL_MEM_DIR, gid);
+export const saveUserMemory = (uid: string, e: GeneralMemoryEntry[]) =>
+  saveMemory(USER_MEM_DIR, uid, e);
+export const loadUserMemory = (uid: string) => loadMemory(USER_MEM_DIR, uid);
+export const saveCloneMemory = (uid: string, e: GeneralMemoryEntry[]) =>
+  saveMemory(CLONE_MEM_DIR, uid, e);
+export const loadCloneMemory = (uid: string) => loadMemory(CLONE_MEM_DIR, uid);
 
-export async function loadGeneralMemoryForGuild(
-  guildId: string
-): Promise<GeneralMemoryEntry[]> {
-  return loadMemory(GENERAL_MEMORY_DIRECTORY, guildId);
-}
-
-export async function saveUserMemory(
-  userId: string,
-  entries: GeneralMemoryEntry[]
-): Promise<void> {
-  await saveMemory(USER_MEMORY_DIRECTORY, userId, entries);
-}
-
-export async function loadUserMemory(
-  userId: string
-): Promise<GeneralMemoryEntry[]> {
-  return loadMemory(USER_MEMORY_DIRECTORY, userId);
-}
-
-export async function saveCloneMemory(
-  userId: string,
-  entries: GeneralMemoryEntry[]
-): Promise<void> {
-  await saveMemory(CLONE_MEMORY_DIRECTORY, userId, entries);
-}
-
-export async function loadCloneMemory(
-  userId: string
-): Promise<GeneralMemoryEntry[]> {
-  return loadMemory(CLONE_MEMORY_DIRECTORY, userId);
+/**
+ * Mark a conversation context as dirty so it will be flushed on next save.
+ */
+export function markContextUpdated(ctx: string): void {
+  updatedConversationContexts.add(ctx);
 }
 
 /**
- * Saves conversation histories and ID mappings to disk.
+ * Save all updated conversation histories & their ID maps to disk.
  */
 export async function saveConversations(
-  conversationHistories: Map<string, Map<string, ConversationContext>>,
-  conversationIdMap: Map<string, Map<string, string>>
+  histories: Map<string, Map<string, ConversationContext>>,
+  idMaps: Map<string, Map<string, string>>
 ): Promise<void> {
-  try {
-    await ensureDirectoryExists(CONVERSATIONS_DIRECTORY);
-    for (const contextKey of updatedContexts) {
-      const histories = conversationHistories.get(contextKey);
-      const idMap = conversationIdMap.get(contextKey);
-      if (histories && idMap) {
-        const dataPath = join(CONVERSATIONS_DIRECTORY, `${contextKey}.bin`);
-        const idPath = join(CONVERSATIONS_DIRECTORY, `${contextKey}-idMap.bin`);
-        const conversationsData = JSON.stringify(
-          Array.from(histories.entries()).reduce<{
-            [key: string]: { messages: [string, ChatMessage][] };
-          }>((obj, [key, context]) => {
-            obj[key] = { messages: Array.from(context.messages.entries()) };
-            return obj;
-          }, {})
-        );
-        const idMappingsData = JSON.stringify(Array.from(idMap.entries()));
-        await Promise.all([
-          writeFile(dataPath, encrypt(conversationsData), "utf-8"),
-          writeFile(idPath, encrypt(idMappingsData), "utf-8"),
-        ]);
-      }
-    }
-    updatedContexts.clear();
-  } catch (error: unknown) {
-    saveErrorToFile(error);
+  await ensureDir(CONVERSATIONS_DIR);
+  for (const ctx of updatedConversationContexts) {
+    const conv = histories.get(ctx);
+    const idMap = idMaps.get(ctx);
+    if (!conv || !idMap) continue;
+
+    const data = JSON.stringify(
+      Object.fromEntries(
+        Array.from(conv.entries()).map(([threadId, ctxObj]) => [
+          threadId,
+          { messages: Array.from(ctxObj.messages.entries()) },
+        ])
+      )
+    );
+    const ids = JSON.stringify(Array.from(idMap.entries()));
+
+    await Promise.all([
+      fs.writeFile(
+        join(CONVERSATIONS_DIR, `${ctx}.bin`),
+        encrypt(data),
+        "utf8"
+      ),
+      fs.writeFile(
+        join(CONVERSATIONS_DIR, `${ctx}-idMap.bin`),
+        encrypt(ids),
+        "utf8"
+      ),
+    ]);
   }
+  updatedConversationContexts.clear();
 }
 
 /**
- * Loads conversation histories and ID mappings from disk.
+ * Load a single conversation context & its ID map from disk, or initialise empty.
  */
 export async function loadConversations(
-  contextKey: string,
-  conversationHistories: Map<string, Map<string, ConversationContext>>,
-  conversationIdMap: Map<string, Map<string, string>>
+  ctx: string,
+  histories: Map<string, Map<string, ConversationContext>>,
+  idMaps: Map<string, Map<string, string>>
 ): Promise<void> {
-  const dataPath = join(CONVERSATIONS_DIRECTORY, `${contextKey}.bin`);
-  const idPath = join(CONVERSATIONS_DIRECTORY, `${contextKey}-idMap.bin`);
-  if (!fs.existsSync(dataPath) || !fs.existsSync(idPath)) {
-    conversationHistories.set(contextKey, new Map());
-    conversationIdMap.set(contextKey, new Map());
+  const dataFile = join(CONVERSATIONS_DIR, `${ctx}.bin`);
+  const idFile = join(CONVERSATIONS_DIR, `${ctx}-idMap.bin`);
+  if (!existsSync(dataFile) || !existsSync(idFile)) {
+    histories.set(ctx, new Map());
+    idMaps.set(ctx, new Map());
     return;
   }
-  try {
-    const convData = JSON.parse(
-      decrypt(await fs.promises.readFile(dataPath, "utf-8"))
-    );
-    const idMapData: [string, string][] = JSON.parse(
-      decrypt(await fs.promises.readFile(idPath, "utf-8"))
-    );
-    const newConversationMap = new Map<string, ConversationContext>();
-    Object.entries(convData).forEach(([key, value]) => {
-      const context = value as { messages: [string, ChatMessage][] };
-      if (context.messages) {
-        newConversationMap.set(key, { messages: new Map(context.messages) });
-      }
-    });
-    conversationHistories.set(contextKey, newConversationMap);
-    conversationIdMap.set(contextKey, new Map(idMapData));
-  } catch (error: unknown) {
-    saveErrorToFile(error);
-    throw error;
-  }
-}
 
-export function markContextAsUpdated(contextKey: string): void {
-  updatedContexts.add(contextKey);
+  try {
+    const [encData, encIds] = await Promise.all([
+      fs.readFile(dataFile, "utf8"),
+      fs.readFile(idFile, "utf8"),
+    ]);
+    const rawData = JSON.parse(decrypt(encData)) as Record<
+      string,
+      { messages: [string, ChatMessage][] }
+    >;
+    const rawIds = JSON.parse(decrypt(encIds)) as [string, string][];
+
+    // Rehydrate conversation map
+    const convMap = new Map<string, ConversationContext>();
+    for (const [threadId, { messages }] of Object.entries(rawData)) {
+      convMap.set(threadId, { messages: new Map(messages) });
+    }
+    histories.set(ctx, convMap);
+    idMaps.set(ctx, new Map(rawIds));
+  } catch (err) {
+    logger.error(`Failed loading conversations for ${ctx}:`, err);
+    histories.set(ctx, new Map());
+    idMaps.set(ctx, new Map());
+  }
 }
 
 /**
- * Logs errors to a file.
+ * Asynchronously log an error to the errors directory (daily files).
  */
-export function saveErrorToFile(error: unknown): void {
-  const folder = ERRORS_DIRECTORY;
-  ensureDirectoryExists(folder);
-  const currentDate = new Date().toISOString().split("T")[0];
-  const errorLogPath = join(folder, `error-${currentDate}.log`);
-  if (!fs.existsSync(folder)) {
-    fs.mkdirSync(folder, { recursive: true });
+export async function logErrorToFile(err: unknown): Promise<void> {
+  try {
+    await ensureDir(ERRORS_DIR);
+    const date = new Date().toISOString().slice(0, 10);
+    const path = join(ERRORS_DIR, `error-${date}.log`);
+    const line = `${new Date().toISOString()} - ${
+      err instanceof Error ? err.stack : String(err)
+    }\n`;
+    await fs.appendFile(path, line, "utf8");
+  } catch (fsErr) {
+    logger.error("Failed to write to error log:", fsErr);
   }
-  const errorMessage = `${new Date().toISOString()} - ${
-    error instanceof Error ? error.stack : String(error)
-  }\n`;
-  fs.appendFile(
-    errorLogPath,
-    errorMessage,
-    (err: NodeJS.ErrnoException | null) => {
-      if (err) {
-        logger.error("Failed to write error to file:", err);
-      }
-    }
-  );
 }

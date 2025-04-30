@@ -54,7 +54,7 @@ A Discord bot built with Discord.js and OpenAI's ChatGPT integration that suppor
 3. **Character Description Setup:**
 
    We now provide a **single** `characterDescription.ts` exporting the persona, `fixMathFormatting`, and a shared `markdownGuide`.  
-   Rename the example and customize as needed:
+   Rename the example and customise as needed:
 
    ```bash
    mv src/data/characterDescription.ts.example src/data/characterDescription.ts
@@ -89,7 +89,7 @@ npm run start
 ```
 
 - Registers slash commands
-- Initializes memory caches
+- Initialises memory caches
 - Listens for messages, DMs, and interactions
 
 ## How It Works
@@ -103,7 +103,7 @@ npm run start
 2. **Conversation Context**
 
    - Maps each thread by channel-messageID or reply chain.
-   - Stores up to 10 messages before summarizing into long-term memory (user or clone).
+   - Stores up to 10 messages before summarising into long-term memory (user or clone).
 
 3. **Prompt Assembly (`generateReply`)**
 
@@ -116,7 +116,7 @@ npm run start
    - Sends a single ChatCompletion with a mixed `content` array of `{ type: "text" }` and `{ type: "image_url" }` entries.
 
 4. **Response Handling**
-   - Applies `fixMathFormatting` + mention & emoji normalization
+   - Applies `fixMathFormatting` + mention & emoji normalisation
    - Replies back in Discord and logs to memory
 
 ## Contributing

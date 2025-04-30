@@ -1,35 +1,57 @@
+/**
+ * src/memory/userMemory.ts
+ *
+ * Manages per-user memory: conversation summaries and context,
+ * kept in an in-memory cache and persisted to disk.
+ */
+
 import { GeneralMemoryEntry } from "../types/types.js";
 import { loadUserMemory, saveUserMemory } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
 
-/** In‑memory storage for individual user memory entries. */
+/**
+ * In-memory cache of user memory entries, keyed by user ID.
+ */
 export const userMemory = new Map<string, GeneralMemoryEntry[]>();
 
 /**
- * Initializes the user memory by clearing any existing entries.
+ * Clears the in-memory cache for user memories.
+ * Should be invoked at bot startup to reset state.
  */
-export async function initializeUserMemory(): Promise<void> {
+export async function initialiseUserMemory(): Promise<void> {
   userMemory.clear();
+  logger.info("🗂️ User memory cache cleared");
 }
 
 /**
- * Updates the memory for a specific user by appending a new memory entry,
- * then persists the updated memory to disk.
+ * Appends a new memory entry for the given user,
+ * updates the in-memory cache, and persists all entries to disk.
  *
- * @param userId - The ID of the user.
- * @param entry - The new memory entry.
+ * @param userId - The Discord user ID
+ * @param entry  - The memory entry to store
  */
 export async function updateUserMemory(
   userId: string,
   entry: GeneralMemoryEntry
 ): Promise<void> {
   try {
-    const existingEntries: GeneralMemoryEntry[] =
-      userMemory.get(userId) ?? (await loadUserMemory(userId)) ?? [];
-    const updatedEntries = [...existingEntries, entry];
-    userMemory.set(userId, updatedEntries);
-    await saveUserMemory(userId, updatedEntries);
-  } catch (error) {
-    logger.error(`Failed to update user memory for user ${userId}:`, error);
+    // Load existing if present in cache, otherwise from disk
+    const existing = userMemory.has(userId)
+      ? userMemory.get(userId)!
+      : await loadUserMemory(userId);
+
+    const updated = existing.concat(entry);
+    userMemory.set(userId, updated);
+
+    // Persist to disk
+    await saveUserMemory(userId, updated);
+    logger.debug(
+      `📥 User memory for ${userId} updated (now ${updated.length} entries)`
+    );
+  } catch (err) {
+    logger.error(
+      `⚠️ Failed to update user memory for ${userId}:`,
+      err instanceof Error ? err.stack : err
+    );
   }
 }

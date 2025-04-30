@@ -50,7 +50,7 @@ const errorRotateTransport = new DailyRotateFile({
   symlinkName: path.join(errorDir, "error-latest.log"),
 });
 
-// Console transport: colorized, uses same format
+// Console transport: colorised, uses same format
 const consoleTransport = new winston.transports.Console({
   format: combine(colorize({ all: true }), commonFormat),
 });

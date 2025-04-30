@@ -1,0 +1,5 @@
+{
+  "cloneUserId": "1234567890",
+  "baseDescription": "Persona goes here",
+  "markdownGuide": "```md\nDiscord Markdown Formatting Guide:\n\n**Text Formatting**\n- Italics: *italics* or _italics_\n- Underline italics: __*underline italics*__\n- Bold: **bold**\n- Underline bold: __**underline bold**__\n- Bold italics: ***bold italics***\n- Underline bold italics: __***underline bold italics***__\n- Underline: __underline__\n- Strikethrough: ~~Strikethrough~~\n\n**Organisational Formatting**\n- Headers: # Header, ## Subheader, ### Subsubheader\n- Subtext: -# subtext\n- Masked links: [label](https://example.com)\n- Unordered lists: - item or * item\n- Ordered lists: 1. item\n\n**Code Blocks**\n- Inline code: `code`\n- Multiline code block:\n```js\ncode line 1\ncode line 2\n```\n\n**Block Quotes**\n- Single-line: > quote\n- Multi-line: >>>\n  quote line 1\n  quote line 2\n\n**Supported Code Block Languages**\n- asciidoc, autohotkey, bash, coffeescript, cpp (C++), cs (C#), css,\n  diff, fix, glsl, ini, json, md (markdown), ml, prolog, ps, py,\n  tex, xl, xml, yaml\n```"
+}
