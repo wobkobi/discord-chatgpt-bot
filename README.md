@@ -1,19 +1,40 @@
 # Discord ChatGPT Bot
 
-A Discord bot built with Discord.js and OpenAI's ChatGPT integration that supports conversation memory, dynamic emoji usage, cooldown management, and clone memory functionality.
+A Discord bot built with Discord.js and OpenAI's ChatGPT integration that supports conversation memory, dynamic emoji usage, cooldown management, clone memory functionality—and now full multimodal (vision) support plus a shared Markdown guide injected into every prompt.
 
 ## Features
 
 - **Interactive Conversation Handling:**  
   Supports persistent conversation context with memory functions for individual users, clones, and guild-level memory.
-- **Dynamic Emoji Usage:**  
-  Retrieves and uses custom server emojis to enhance bot responses.
+
+- **Persona & Clone Memory (Optional):**
+
+  - Toggle on/off via `USE_PERSONA` in your `.env`.
+  - When on, injects a richly formatted persona + long-term memory for each user.
+  - Special “clone” user ID (`cloneUserId`) whose speech style is inferred from recent messages.
+
+- **Multimodal Vision Support:**
+
+  - Automatically detects image attachments and passes their URLs as `image_url` blocks to OpenAI’s vision-capable models (e.g. `gpt-4o`).
+  - Use models like `gpt-4.1-mini`, `gpt-image-1`, etc.
+
+- **Shared Markdown Guide Injection:**  
+  A comprehensive Discord-Markdown guide block is now defined once in `characterDescription.ts` and always injected as a **system** message, ensuring the model knows exactly how to format its output.
+
 - **Cooldown Management:**  
   Prevents spam by enforcing cooldowns on commands and messages.
-- **Clone Memory Enhancements:**  
-  Logs interactions, including how other users engage with the cloned user, to help the bot learn conversation styles.
-- **Slash Commands:**  
-  Easily interact with the bot using commands such as `/ask`, `/setcooldown`, and `/stop`.
+
+  - Global vs per-user cooldown: `/setcooldown` command
+  - Default cooldown time and behavior configurable in `config.ts`
+
+- **Slash Commands:**
+
+  - `/ask`: Ask the bot a question privately.
+  - `/setcooldown`: _(Owner only)_ Configure server cooldown settings.
+  - `/stop`: _(Owner only)_ Safely shut down the bot.
+
+- **Dynamic Emoji Usage:**  
+  Replaces `:emoji_name:` shortcodes with your server’s custom emojis when replying in guild channels.
 
 ## Installation
 
@@ -30,65 +51,82 @@ A Discord bot built with Discord.js and OpenAI's ChatGPT integration that suppor
    npm install
    ```
 
-3. **Rename the Character Description File:**
+3. **Character Description Setup:**
 
-   The repository includes a sample file for the character description. Rename `characterDescription.ts.example` to `characterDescription.ts`:
+   We now provide a **single** `characterDescription.ts` exporting the persona, `fixMathFormatting`, and a shared `markdownGuide`.  
+   Rename the example and customize as needed:
 
    ```bash
    mv src/data/characterDescription.ts.example src/data/characterDescription.ts
    ```
 
-   _(On Windows, you can rename the file manually via File Explorer or use the `rename` command in Command Prompt.)_
-
 ## Configuration
 
-Create a `.env` file in the root directory with the following environment variables:
+Create a `.env` file in the root directory with:
 
 ```dotenv
+# Discord
 BOT_TOKEN=your_discord_bot_token
 CLIENT_ID=your_discord_client_id
 OWNER_ID=your_discord_owner_id
+
+# OpenAI
 OPENAI_API_KEY=your_openai_api_key
-ENCRYPTION_KEY_BASE=your_encryption_key_base
+
+# Optional feature toggles
+USE_PERSONA=true                # inject persona & memory
+USE_FINE_TUNED_MODEL=false      # toggle using your FT model
+FINE_TUNED_MODEL_NAME=ft-model  # if FT is enabled
+
+# Encryption
+ENCRYPTION_KEY_BASE=your_secret
 ```
 
-These keys are essential for authenticating with Discord, OpenAI, and for encrypting stored memory data.
-
 ## Running the Bot
-
-Start the bot using:
 
 ```bash
 npm run start
 ```
 
-The bot will register its slash commands, initialize memory, and start listening for messages and interactions.
+- Registers slash commands
+- Initializes memory caches
+- Listens for messages, DMs, and interactions
 
-## Commands
+## How It Works
 
-- **/ask:** Ask the bot a question privately.
-- **/setcooldown:** _(Owner only)_ Configure the cooldown settings for the server.
-- **/stop:** _(Owner only)_ Safely stop the bot.
+1. **Message Create**
 
-## Memory Handling
+   - Ignores bots & `@everyone`.
+   - Requires a DM, explicit mention, or rare 1/50 “interjection” chance in guild.
+   - Displays a typing indicator (`channel.sendTyping()`).
 
-The bot maintains three types of memory:
+2. **Conversation Context**
 
-- **User Memory:**  
-  Stores conversation summaries for individual users, formatting messages with proper Discord mentions.
+   - Maps each thread by channel-messageID or reply chain.
+   - Stores up to 10 messages before summarizing into long-term memory (user or clone).
 
-- **Clone Memory:**  
-  Stores conversation context for the clone user, including extra context such as interaction details (e.g., which user interacted with the clone).
+3. **Prompt Assembly (`generateReply`)**
 
-- **General Memory:**  
-  Stores guild-level conversation summaries.
+   - Chooses `gpt-4o` (or your fine-tuned model).
+   - **Always** injects:
+     1. Persona & memory (if `USE_PERSONA`)
+     2. Reply-to / channel history notes (if present)
+     3. **Global Markdown guide** (`markdownGuide`)
+   - Walks the reply chain, converts to text blocks (and `image_url` blocks for attachments).
+   - Sends a single ChatCompletion with a mixed `content` array of `{ type: "text" }` and `{ type: "image_url" }` entries.
 
-Each memory module is designed to ensure that the conversation context is preserved and formatted appropriately.
+4. **Response Handling**
+   - Applies `fixMathFormatting` + mention & emoji normalization
+   - Replies back in Discord and logs to memory
 
 ## Contributing
 
-Contributions are welcome! Please open issues or submit pull requests for improvements or new features.
+PRs welcome! Please file issues or pull requests for:
+
+- New vision integrations (e.g. file uploads)
+- Additional feature toggles or memory behaviors
+- Improvements to the shared Markdown guide
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+Licensed under the [MIT License](LICENSE).

@@ -8,22 +8,23 @@
   "plugins": ["@typescript-eslint", "prettier"],
   "rules": {
     "@typescript-eslint/no-unused-vars": "error",
+    "@typescript-eslint/consistent-type-definitions": "error",
     "prettier/prettier": [
       "error",
       {
-        "endOfLine": "lf"
+        "endOfLine": "auto"
       }
     ],
-    "linebreak-style": ["error", "unix"],
-    "@typescript-eslint/consistent-type-definitions": "error"
+    "linebreak-style": "off"
   },
   "parserOptions": {
-    "ecmaVersion": 2020,
+    "ecmaVersion": 2021,
     "sourceType": "module"
   },
   "env": {
     "browser": true,
-    "es2021": true
+    "es2021": true,
+    "node": true
   },
   "settings": {
     "import/resolver": {
@@ -31,5 +32,6 @@
         "extensions": [".js", ".jsx", ".ts", ".tsx"]
       }
     }
-  }
+  },
+  "ignorePatterns": ["node_modules/", "dist/"]
 }
