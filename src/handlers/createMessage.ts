@@ -1,10 +1,13 @@
-import { Client, Message } from "discord.js";
+import { Client, Guild, Message } from "discord.js";
+import "dotenv/config";
 import OpenAI, { APIError } from "openai";
-import { ChatCompletionMessageParam } from "openai/resources/chat";
+import type { ChatCompletionMessageParam } from "openai/resources/chat";
 import { defaultCooldownConfig } from "../config.js";
 import {
   cloneUserId,
+  fixMathFormatting,
   getCharacterDescription,
+  markdownGuide,
 } from "../data/characterDescription.js";
 import { cloneMemory, updateCloneMemory } from "../memory/cloneMemory.js";
 import { updateUserMemory, userMemory } from "../memory/userMemory.js";
@@ -15,25 +18,37 @@ import {
   manageCooldown,
   useCooldown,
 } from "../utils/cooldown.js";
-import { ensureFileExists, markContextAsUpdated } from "../utils/fileUtils.js";
+import {
+  ensureFileExists,
+  markContextAsUpdated,
+  saveConversations,
+} from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
 
-/** Remove stray @ symbols so Discord mentions work. */
+// --- Helpers ---------------------------------------------------------
+
+/** Normalize mentions so raw IDs become `<@123…>` and remove stray `@`. */
 function fixMentions(text: string): string {
-  return text.replace(/@/g, "");
+  return text
+    .replace(/<@!?(\d+)>/g, "<@$1>")
+    .replace(/<(\d+)>/g, "<@$1>")
+    .replace(/@/g, "");
 }
 
-/** Wrap LaTeX‑style math ([…]) in inline code. */
-function fixMathFormatting(text: string): string {
-  return text.replace(/(\[[^\]]*\\[^\]]*\])/g, (m) => `\`${m}\``);
-}
-
-/** Only apply mention‑and‑math fixes; do not wrap entire text in code blocks. */
+/** Apply all of our Discord‐safe formatting tweaks. */
 function applyDiscordMarkdownFormatting(text: string): string {
   return fixMathFormatting(fixMentions(text));
 }
 
-/** Build a ChatMessage from a Discord Message. */
+/** Replace `:emoji_name:` with the actual guild emoji if present. */
+function replaceEmojiShortcodes(text: string, guild: Guild): string {
+  return text.replace(/:([a-zA-Z0-9_]+):/g, (_, name) => {
+    const e = guild.emojis.cache.find((e) => e.name === name);
+    return e ? `<:${e.name}:${e.id}>` : `:${name}:`;
+  });
+}
+
+/** Convert a Discord `Message` into our `ChatMessage` shape. */
 function createChatMessage(
   message: Message,
   role: "user" | "assistant",
@@ -53,7 +68,7 @@ function createChatMessage(
   };
 }
 
-/** Summarize the last three messages in the conversation context. */
+/** Take the last three messages and smash them into a one‐line summary. */
 function summarizeConversation(context: ConversationContext): string {
   return Array.from(context.messages.values())
     .slice(-3)
@@ -61,242 +76,282 @@ function summarizeConversation(context: ConversationContext): string {
     .join("\n");
 }
 
+// --- Multimodal Reply Generation -------------------------------------
+
 /**
- * Generate a reply using OpenAI.
- * Optionally include a “Replying to:” note, channel history, and general (guild) memory.
- * When replying as the clone, it injects a separate "Clone memory:" note to capture its style.
+ * Build and send a single ChatCompletion that may include images
+ * @param convoHistory  all prior turns in this thread (user+assistant)
+ * @param currentId     the ID of the most recent user message
+ * @param openai        OpenAI client
+ * @param userId        Discord user ID
+ * @param replyToInfo   optional “Replying to: …” note
+ * @param channelHistory optional text dump of recent channel
+ * @param imageUrls     optional list of image URLs to send as vision inputs
  */
-async function generateReply(
-  messages: Map<string, ChatMessage>,
-  currentMessageId: string,
+export async function generateReply(
+  convoHistory: Map<string, ChatMessage>,
+  currentId: string,
   openai: OpenAI,
   userId: string,
   replyToInfo?: string,
-  channelHistory?: string
+  channelHistory?: string,
+  imageUrls: string[] = []
 ): Promise<string> {
-  // Build threaded context by traversing the reply chain.
-  const thread: { role: "user" | "assistant" | "system"; content: string }[] =
-    [];
-  let id: string | undefined = currentMessageId;
-  while (id) {
-    const m = messages.get(id);
-    if (!m) break;
-    const sanitized = fixMentions(m.content);
-    thread.unshift({
-      role: m.role,
-      content: m.role === "user" ? `${m.name} asked: ${sanitized}` : sanitized,
-    });
-    id = m.replyToId;
-  }
+  // Decide which model to use (plain GPT or your fine-tuned FT)
+  const useFT = process.env.USE_FINE_TUNED_MODEL === "true";
+  const modelName = useFT
+    ? process.env.FINE_TUNED_MODEL_NAME ||
+      (logger.error("FINE_TUNED_MODEL_NAME missing, exiting."),
+      process.exit(1),
+      "")
+    : "gpt-4o";
 
-  // Choose memory: if clone, use cloneMemory; otherwise use userMemory.
-  const mem =
-    userId === cloneUserId
-      ? cloneMemory.get(userId) || []
-      : userMemory.get(userId) || [];
-  if (mem.length) {
-    thread.unshift({
+  // Build our “system” messages
+  const messages: ChatCompletionMessageParam[] = [];
+  if (process.env.USE_PERSONA === "true") {
+    // 1) inject persona
+    const persona = await getCharacterDescription(userId);
+    messages.push({ role: "system", content: persona });
+    // 2) inject long‐term memory
+    const memArr =
+      userId === cloneUserId
+        ? cloneMemory.get(userId) || []
+        : userMemory.get(userId) || [];
+    if (memArr.length) {
+      const prefix =
+        userId === cloneUserId ? "Clone memory:\n" : "Long-term memory:\n";
+      messages.push({
+        role: "system",
+        content: prefix + memArr.map((e) => e.content).join("\n"),
+      });
+    }
+  }
+  // optional metadata
+  if (replyToInfo) {
+    messages.push({ role: "system", content: `Replying to: ${replyToInfo}` });
+  }
+  if (channelHistory) {
+    messages.push({
       role: "system",
-      content:
-        userId === cloneUserId
-          ? "Clone memory:\n" + mem.map((e) => e.content).join("\n")
-          : "Long-term memory:\n" + mem.map((e) => e.content).join("\n"),
+      content: `Recent channel history:\n${channelHistory}`,
     });
   }
 
-  // Get the bot’s persona.
-  const persona = (await getCharacterDescription(userId)).trim();
-  const systemMsg: ChatCompletionMessageParam = {
-    role: "system",
-    content: persona,
+  messages.push({ role: "system", content: markdownGuide });
+
+  const userBlocks: Array<
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } }
+  > = [];
+  // Walk back from the current message through `.replyToId`
+  let cursor: string | undefined = currentId;
+  while (cursor) {
+    const turn = convoHistory.get(cursor);
+    if (!turn) break;
+    const clean = fixMathFormatting(fixMentions(turn.content));
+    if (turn.role === "user") {
+      userBlocks.unshift({
+        type: "text",
+        text: `${turn.name} asked: ${clean}`,
+      });
+    } else {
+      userBlocks.unshift({ type: "text", text: clean });
+    }
+    cursor = turn.replyToId;
+  }
+
+  // If the user attached images, append them as vision blocks:
+  for (const url of imageUrls) {
+    userBlocks.push({ type: "image_url", image_url: { url } });
+  }
+
+  // Finally, emit a single “user” message whose content is either:
+  // - an array of blocks (if images present or always, your choice)
+  // - or join all the text blocks into one big string if you prefer the old style
+  const userMessage: ChatCompletionMessageParam = {
+    role: "user",
+    content:
+      userBlocks.length > 0
+        ? userBlocks
+        : // fallback: empty question?
+          [{ type: "text", text: "" }],
   };
 
-  // Optional reply note.
-  const replyNote: ChatCompletionMessageParam | null = replyToInfo
-    ? { role: "system", content: `Replying to: ${replyToInfo}` }
-    : null;
+  messages.push(userMessage);
 
-  // Optional channel history note.
-  const historyNote: ChatCompletionMessageParam | null = channelHistory
-    ? { role: "system", content: `Recent channel history:\n${channelHistory}` }
-    : null;
-
-  // Assemble final prompt.
-  const final: ChatCompletionMessageParam[] = [
-    systemMsg,
-    ...(replyNote ? [replyNote] : []),
-    ...(historyNote ? [historyNote] : []),
-    ...thread.map((t) => ({ role: t.role, content: t.content })),
-  ];
-
-  logger.info(`Prompt context:\n${JSON.stringify(final, null, 2)}`);
+  logger.info(
+    `📝 Prompt → model=${modelName}, blocks=${userBlocks.length}\n` +
+      `Prompt context:\n${JSON.stringify(messages, null, 2)}`
+  );
 
   try {
     const res = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: final,
+      model: modelName,
+      messages,
       top_p: 0.6,
       frequency_penalty: 0.5,
-      max_tokens: 2000,
+      max_tokens: 2_000,
     });
-    const txt = res.choices[0]?.message.content;
-    if (!txt) throw new Error("Empty response");
-    return txt.trim();
+    const out = res.choices[0]?.message.content;
+    if (!out) throw new Error("Empty AI response");
+    return out.trim();
   } catch (err: unknown) {
+    // If you tried to use a bad FT, exit cleanly
+    if (useFT && err instanceof APIError && err.code === "model_not_found") {
+      logger.error(`Fine-tuned model not found: ${modelName}`);
+      process.exit(1);
+    }
     logger.error("OpenAI error:", err);
     if (err instanceof APIError && err.code === "insufficient_quota") {
-      return "Out of quota.";
+      return "⚠️ Out of quota.";
     }
     throw err;
   }
 }
+
+// --- Conversation Management & Redispatch ----------------------------
 
 const histories = new Map<string, Map<string, ConversationContext>>();
 const idMaps = new Map<string, Map<string, string>>();
 const MESSAGE_LIMIT = 10;
 
 /**
- * Main message handler.
- * - Ignores bots and @everyone/@here.
- * - Tracks clone user without replying unless mentioned.
- * - Replies when explicitly mentioned or with a 1/50 interjection.
- * - Fetches the last 50 messages in the channel to build rich “Channel history.”
- * - Injects general (guild) memory (if available) into the prompt.
+ * Returns a message‐handler that you can wire to `client.on("messageCreate",…)`
  */
-export async function handleNewMessage(openai: OpenAI, client: Client) {
+export async function handleNewMessage(
+  openai: OpenAI,
+  client: Client
+): Promise<(message: Message) => Promise<void>> {
   return async (message: Message): Promise<void> => {
+    // ignore bots & @everyone
     if (message.author.bot) return;
-    if (message.mentions.everyone) return;
+    if (message.guild && message.mentions.everyone) return;
 
-    const userId = message.author.id;
-    if (!histories.has(userId)) {
-      histories.set(userId, new Map());
-      idMaps.set(userId, new Map());
-      markContextAsUpdated(userId);
-    }
+    // must be a DM or mention or 1/50 interjection in a guild
+    const mentioned = message.guild
+      ? message.mentions.has(client.user!.id)
+      : true;
+    const interject = message.guild && !mentioned && Math.random() < 1 / 50;
+    if (message.guild && !mentioned && !interject) return;
 
-    const isMentioned = message.mentions.has(client.user!.id);
-    if (message.author.id === cloneUserId && !isMentioned) {
-      await updateCloneMemory(cloneUserId, {
-        timestamp: Date.now(),
-        content: message.content,
-      });
-      return;
-    }
-
-    // For guild messages, reply only if mentioned or if a 1/50 interjection occurs.
-    const interject = message.guild && !isMentioned && Math.random() < 1 / 50;
-    if (message.guild && !isMentioned && !interject) return;
-
-    // Only send typing indicator if replying.
+    // typing indicator
     if (message.channel.isTextBased() && "sendTyping" in message.channel) {
       message.channel.sendTyping().catch(() => {});
     }
 
-    // Determine target message: if interjecting, use the last user message in this channel.
-    let target: Message = message;
-    if (interject) {
-      const lastHist = histories.get(userId)!.get(message.channel.id)?.messages;
-      const lastMsg = lastHist && Array.from(lastHist.values()).pop();
-      if (lastMsg && lastMsg.id !== message.id) {
-        target = lastMsg as unknown as Message;
-      }
+    const userId = message.author.id;
+    const guildId = message.guild?.id ?? null;
+
+    // update clone memory
+    if (userId === cloneUserId) {
+      await updateCloneMemory(cloneUserId, {
+        timestamp: Date.now(),
+        content: message.content,
+      });
     }
 
-    // Build conversation context.
-    const map = idMaps.get(userId)!;
+    // enforce cooldown
+    const cdKey = getCooldownContext(guildId, userId);
+    if (useCooldown && isCooldownActive(cdKey)) {
+      const cd = defaultCooldownConfig.cooldownTime.toFixed(2);
+      const warn = await message.reply(`⏳ Cooldown: ${cd}s`);
+      setTimeout(() => warn.delete().catch(() => {}), 5_000);
+      return;
+    }
+    if (useCooldown) manageCooldown(guildId, userId);
+
+    // init per‐context stores
+    const contextKey = message.guild ? guildId! : userId;
+    if (!histories.has(contextKey)) {
+      histories.set(contextKey, new Map());
+      idMaps.set(contextKey, new Map());
+    }
+    markContextAsUpdated(contextKey);
+    const convIds = idMaps.get(contextKey)!;
+
+    // pick / assign this turn’s conversation ID
+    const replyToId = message.reference?.messageId;
     const ctxId =
-      target.reference?.messageId && map.has(target.reference.messageId)
-        ? map.get(target.reference.messageId)!
-        : `${target.channel.id}-${target.id}`;
+      replyToId && convIds.has(replyToId)
+        ? convIds.get(replyToId)!
+        : `${message.channel.id}-${message.id}`;
+    convIds.set(message.id, ctxId);
 
-    const userHist = histories.get(userId)!;
-    let conv = userHist.get(ctxId);
-    if (!conv) {
-      conv = { messages: new Map() };
-      userHist.set(ctxId, conv);
+    // grab or create that conversation
+    const convMap = histories.get(contextKey)!;
+    if (!convMap.has(ctxId)) {
+      convMap.set(ctxId, { messages: new Map() });
     }
-    map.set(target.id, ctxId);
+    const conversation = convMap.get(ctxId)!;
 
-    // Add the target message.
-    conv.messages.set(
-      target.id,
-      createChatMessage(target, "user", client.user!.username)
+    // record the user’s turn
+    conversation.messages.set(
+      message.id,
+      createChatMessage(message, "user", client.user?.username)
     );
 
-    // Fetch the last 50 messages in the channel for context.
-    let channelHistory: string | undefined = undefined;
+    // fetch a little channel history if we’re in a guild
+    let channelHistory: string | undefined;
     if (message.guild) {
       try {
         const fetched = await message.channel.messages.fetch({ limit: 50 });
-        const sorted = Array.from(fetched.values()).sort(
-          (a, b) => a.createdTimestamp - b.createdTimestamp
-        );
-        channelHistory = sorted
-          .map((m) => {
-            const t = new Date(m.createdTimestamp).toLocaleTimeString();
-            return `${m.author.username} (${t}): ${m.content}`;
-          })
+        channelHistory = Array.from(fetched.values())
+          .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
+          .map((m) => `${m.author.username}: ${m.content}`)
           .join("\n");
-      } catch (e) {
-        logger.error("History fetch failed:", e);
+      } catch (err) {
+        logger.error("Failed to fetch channel history:", err);
       }
     }
 
-    // Cooldown.
-    const cdKey = getCooldownContext(message.guild?.id ?? null, userId);
-    if (useCooldown && isCooldownActive(cdKey)) {
-      const cd = defaultCooldownConfig.cooldownTime.toFixed(2);
-      const warn = await message.reply(`Cooldown: ${cd}s`);
-      setTimeout(() => warn.delete().catch(() => {}), 5000);
-      return;
-    }
-    if (useCooldown) manageCooldown(message.guild?.id ?? null, userId);
+    // gather any image attachments
+    const imageUrls = Array.from(message.attachments.values())
+      .filter((a) => a.contentType?.startsWith("image/"))
+      .map((a) => a.url);
 
-    // Summarize conversation if message count is too high.
-    if (conv.messages.size >= MESSAGE_LIMIT) {
-      const sum = summarizeConversation(conv);
+    // if the convo is getting long, summarize + archive
+    if (conversation.messages.size >= MESSAGE_LIMIT) {
+      const summary = summarizeConversation(conversation);
       await updateUserMemory(userId, {
         timestamp: Date.now(),
-        content: `Summary: ${sum}`,
+        content: `🔖 ${summary}`,
       });
-      conv.messages.clear();
+      conversation.messages.clear();
     }
 
-    // Prepare reply information.
-    const replyInfo = `${target.author.username} said: "${target.content}"`;
+    // dispatch to OpenAI
+    const replyInfo = `${message.author.username} said: "${message.content}"`;
+    const aiResponse = await generateReply(
+      conversation.messages,
+      message.id,
+      openai,
+      userId,
+      replyInfo,
+      channelHistory,
+      imageUrls
+    );
 
-    // Generate and send reply.
-    try {
-      const txt = await generateReply(
-        conv.messages,
-        target.id,
-        openai,
-        userId,
-        replyInfo,
-        channelHistory
-      );
-      const out = applyDiscordMarkdownFormatting(txt);
-      const sent = await message.reply(out);
-      conv.messages.set(
-        sent.id,
-        createChatMessage(sent, "assistant", client.user!.username)
-      );
-      const newSum = summarizeConversation(conv);
-      await updateUserMemory(userId, {
-        timestamp: Date.now(),
-        content: `Summary: ${newSum}`,
-      });
-      await ensureFileExists([userId], histories, idMaps);
-    } catch (e) {
-      logger.error("Reply error:", e);
-      await message.reply("Error processing your request.");
-    }
+    // patch up markdown + emojis and send back
+    let out = applyDiscordMarkdownFormatting(aiResponse);
+    if (message.guild) out = replaceEmojiShortcodes(out, message.guild);
+
+    const sent = await message.reply(out);
+    // record the assistant’s turn
+    conversation.messages.set(
+      sent.id,
+      createChatMessage(sent, "assistant", client.user?.username)
+    );
+    // persist memory & conversations to disk
+    await updateUserMemory(userId, {
+      timestamp: Date.now(),
+      content: `Replied: ${out}`,
+    });
+    await saveConversations(histories, idMaps);
   };
 }
 
-/** On startup, load existing conversations from disk. */
-export async function run(client: Client) {
+/** On bot startup, preload any existing conversation files */
+export async function run(client: Client): Promise<void> {
   const guildIds = Array.from(client.guilds.cache.keys());
   await ensureFileExists(guildIds, histories, idMaps);
 }

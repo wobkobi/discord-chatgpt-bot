@@ -6,25 +6,28 @@ import DailyRotateFile from "winston-daily-rotate-file";
 
 const { combine, timestamp, printf, colorize, errors } = winston.format;
 
-// Ensure log directories exist.
+// Ensure log directories exist
 const logsDir = path.join(process.cwd(), "logs");
 const errorDir = path.join(logsDir, "error");
+if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
+if (!fs.existsSync(errorDir)) fs.mkdirSync(errorDir, { recursive: true });
 
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
-}
-if (!fs.existsSync(errorDir)) {
-  fs.mkdirSync(errorDir, { recursive: true });
-}
-
-// Custom log format: [HH:mm:ss] [LEVEL]: message
+// Custom log format: audible bell on errors, same for console and files
 const logFormat = printf((info: TransformableInfo) => {
   const { level, message, timestamp, stack } = info;
-  return `[${timestamp}] [${level.toUpperCase()}]: ${stack || message}`;
+  //  triggers a console bell if supported
+  const bell = level === "error" ? "\u0007" : "";
+  return `${bell}[${timestamp}] [${level.toUpperCase()}]: ${stack || message}`;
 });
 
-// Combined logs transport: files stored in logs folder with filenames like "2025-04-04.log"
-// The symlink "latest.log" (in the logs folder) will point to the current log file.
+// Shared format for console and file transports
+const commonFormat = combine(
+  timestamp({ format: "HH:mm:ss" }),
+  errors({ stack: true }),
+  logFormat
+);
+
+// Rotate daily for combined logs
 const combinedRotateTransport = new DailyRotateFile({
   dirname: logsDir,
   filename: "%DATE%.log",
@@ -35,8 +38,7 @@ const combinedRotateTransport = new DailyRotateFile({
   symlinkName: path.join(logsDir, "latest.log"),
 });
 
-// Error logs transport: files stored in logs/error folder with filenames like "2025-04-04.log"
-// The symlink "error-latest.log" (in the error folder) will point to the current error log file.
+// Rotate daily for error logs
 const errorRotateTransport = new DailyRotateFile({
   dirname: errorDir,
   filename: "%DATE%.log",
@@ -48,25 +50,15 @@ const errorRotateTransport = new DailyRotateFile({
   symlinkName: path.join(errorDir, "error-latest.log"),
 });
 
+// Console transport: colorized, uses same format
+const consoleTransport = new winston.transports.Console({
+  format: combine(colorize({ all: true }), commonFormat),
+});
+
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || "info",
-  format: combine(
-    timestamp({ format: "HH:mm:ss" }),
-    errors({ stack: true }),
-    logFormat
-  ),
-  transports: [
-    new winston.transports.Console({
-      format: combine(
-        colorize(),
-        timestamp({ format: "HH:mm:ss" }),
-        errors({ stack: true }),
-        logFormat
-      ),
-    }),
-    errorRotateTransport,
-    combinedRotateTransport,
-  ],
+  format: commonFormat,
+  transports: [consoleTransport, errorRotateTransport, combinedRotateTransport],
 });
 
 export default logger;
