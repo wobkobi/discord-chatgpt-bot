@@ -6,8 +6,8 @@ import {
   GuildCooldownConfig,
   guildCooldownConfigs,
   saveGuildCooldownConfigs,
-} from "../config.js";
-import logger from "../utils/logger.js";
+} from "../config/index.js";
+import logger from "../utils/logger";
 
 const OWNER_ID = process.env.OWNER_ID;
 

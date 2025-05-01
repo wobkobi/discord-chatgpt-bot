@@ -1,6 +1,6 @@
-import { ChatMessage, ConversationContext } from "@/types/types";
+import { ChatMessage, ConversationContext } from "@/types";
 import { Guild, Message } from "discord.js";
-import { fixMathFormatting } from "../data/characterDescription.js";
+import { fixMathFormatting } from "../services/characterService.js";
 
 /**
  * Normalise Discord mention syntax and strip stray '@'.

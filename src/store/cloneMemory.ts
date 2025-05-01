@@ -5,7 +5,7 @@
  * specifically for the cloned user persona, persisted to disk.
  */
 
-import { GeneralMemoryEntry } from "../types/types.js";
+import { GeneralMemoryEntry } from "@/types";
 import { loadCloneMemory, saveCloneMemory } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
 

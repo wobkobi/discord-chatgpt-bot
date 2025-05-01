@@ -4,7 +4,7 @@ import {
   defaultCooldownConfig,
   GuildCooldownConfig,
   guildCooldownConfigs,
-} from "../config.js";
+} from "../config/index.js";
 
 /**
  * Retrieve the effective cooldown configuration for a given guild.

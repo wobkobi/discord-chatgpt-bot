@@ -1,32 +1,33 @@
-// src/data/characterDescription.ts
-
-import { readFileSync } from "fs";
 import { DateTime } from "luxon";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
-import { userMemory } from "../memory/userMemory.js";
+import { createRequire } from "module";
+import path from "path";
+import { userMemory } from "../store/userMemory.js";
 
-// 1) load and parse persona.json synchronously
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const personaRaw = readFileSync(join(__dirname, "persona.json"), "utf8");
-const persona = JSON.parse(personaRaw) as {
+// use createRequire to load JSON in ESM without import assertions
+const require = createRequire(import.meta.url);
+// always load the source persona.json so both dev and build pick up the same file
+const persona = require(
+  path.resolve(process.cwd(), "src/config/persona.json")
+) as {
   cloneUserId: string;
   baseDescription: string;
   markdownGuide: string;
 };
 
-// 2) export cloneUserId & markdownGuide for use elsewhere
+// persona.json provides: cloneUserId, baseDescription, markdownGuide
 export const cloneUserId = persona.cloneUserId;
 export const markdownGuide = persona.markdownGuide;
 
-// 3) helper to escape TeX sequences for Discord
+/**
+ * Escape any TeX sequences so they render correctly within Discord markdown.
+ */
 export function fixMathFormatting(text: string): string {
-  return text.replace(/(\[[^\]]*\\[^\]]*\])/g, (m) => `\`${m}\``);
+  return text.replace(/(\\\[[^\]]*\\\\[^\]]*\\\])/g, (m) => `\`${m}\``);
 }
 
 /**
- * Builds the system prompt: baseDescription + optional clone style +
- * current timestamp + markdownGuide.
+ * Build the full system prompt by combining the base description,
+ * optional clone-style snippet, current timestamp, and the markdown guide.
  */
 export async function getCharacterDescription(
   userId?: string
@@ -49,6 +50,5 @@ export async function getCharacterDescription(
   const now = DateTime.now().toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS);
   description += `\n\n_Current time: ${now}_\n\n${markdownGuide}`;
 
-  // wrap any [ ... \ ] math bits in backticks
   return fixMathFormatting(description);
 }

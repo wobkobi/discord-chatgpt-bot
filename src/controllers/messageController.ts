@@ -1,10 +1,11 @@
-import { ConversationContext } from "@/types/types";
+import { ConversationContext } from "@/types";
 import { Client, Message } from "discord.js";
 import OpenAI from "openai";
-import { defaultCooldownConfig } from "../config.js";
-import { cloneUserId } from "../data/characterDescription.js";
-import { updateCloneMemory } from "../memory/cloneMemory.js";
-import { updateUserMemory } from "../memory/userMemory.js";
+import { defaultCooldownConfig } from "../config/index.js";
+import { cloneUserId } from "../services/characterService.js";
+import { generateReply } from "../services/replyService.js";
+import { updateCloneMemory } from "../store/cloneMemory.js";
+import { updateUserMemory } from "../store/userMemory.js";
 import {
   getCooldownContext,
   isCooldownActive,
@@ -22,7 +23,6 @@ import {
   saveConversations,
 } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
-import { generateReply } from "./replyGenerator.js";
 
 const MESSAGE_LIMIT = 10;
 const histories = new Map<string, Map<string, ConversationContext>>();

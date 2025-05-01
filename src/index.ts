@@ -17,8 +17,9 @@ import { existsSync, readdirSync } from "fs";
 import OpenAI from "openai";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
-import { handleNewMessage, run } from "./handlers/messageHandler.js";
-import { initialiseUserMemory } from "./memory/userMemory.js";
+
+import { handleNewMessage, run } from "./controllers/messageController.js";
+import { initialiseUserMemory } from "./store/userMemory.js";
 import logger from "./utils/logger.js";
 
 dotenv.config();
@@ -44,6 +45,10 @@ declare module "discord.js" {
   }
 }
 
+let botReady = false;
+export function isBotReady() {
+  return botReady;
+}
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -78,7 +83,10 @@ for (const file of readdirSync(commandsPath).filter((f) =>
     logger.error(`❌ Failed to load ${file}:`, err);
   }
 }
-logger.info(`✅ Loaded ${client.commands.size} slash command(s).`);
+logger.info(`✅ Loaded ${client.commands.size} slash command(s):`);
+for (const commandName of client.commands.keys()) {
+  logger.info(`    • ${commandName}`);
+}
 
 // Register slash commands globally
 async function registerGlobalCommands() {
@@ -117,12 +125,14 @@ client.once("ready", async () => {
 
   // Preload any existing conversation files
   await run(client);
-  logger.info("💾 Conversations preloaded.");
+  botReady = true;
+  logger.info("✅ Bot is now ready to handle messages.");
 });
 
 // Route every non-bot message into our handler
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
+  if (!botReady) return;
   try {
     await messageHandler(message);
   } catch (err) {

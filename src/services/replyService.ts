@@ -1,16 +1,17 @@
-import { ChatMessage } from "@/types/types";
 import OpenAI, { APIError } from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat";
+
+import { ChatMessage } from "@/types";
+import { cloneMemory } from "../store/cloneMemory.js";
+import { userMemory } from "../store/userMemory.js";
+import { applyDiscordMarkdownFormatting } from "../utils/discordHelpers.js";
+import { renderMathToPng } from "../utils/latexRenderer.js";
+import logger from "../utils/logger.js";
 import {
   cloneUserId,
   getCharacterDescription,
   markdownGuide,
-} from "../data/characterDescription.js";
-import { cloneMemory } from "../memory/cloneMemory.js";
-import { userMemory } from "../memory/userMemory.js";
-import { applyDiscordMarkdownFormatting } from "../utils/discordHelpers.js";
-import { renderMathToPng } from "../utils/latexRenderer.js";
-import logger from "../utils/logger.js";
+} from "./characterService.js";
 
 /**
  * Generate an AI reply, render any LaTeX blocks to images,

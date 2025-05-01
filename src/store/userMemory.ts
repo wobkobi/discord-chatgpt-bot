@@ -5,7 +5,7 @@
  * kept in an in-memory cache and persisted to disk.
  */
 
-import { GeneralMemoryEntry } from "../types/types.js";
+import { GeneralMemoryEntry } from "@/types";
 import { loadUserMemory, saveUserMemory } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
 

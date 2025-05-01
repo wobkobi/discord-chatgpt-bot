@@ -4,12 +4,13 @@ import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import dotenv from "dotenv";
 import OpenAI, { APIError } from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat";
+
 import {
   cloneUserId,
   getCharacterDescription,
-} from "../data/characterDescription.js";
-import { cloneMemory } from "../memory/cloneMemory.js";
-import { userMemory } from "../memory/userMemory.js";
+} from "../services/characterService.js";
+import { cloneMemory } from "../store/cloneMemory.js";
+import { userMemory } from "../store/userMemory.js";
 import logger from "../utils/logger.js";
 
 dotenv.config();

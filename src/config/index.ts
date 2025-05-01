@@ -2,7 +2,7 @@
 
 import fs from "fs/promises";
 import { join } from "path";
-import logger from "./utils/logger.js";
+import logger from "../utils/logger.js";
 
 /**
  * Configuration options for per-guild cooldown behavior.

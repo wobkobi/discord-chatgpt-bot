@@ -7,6 +7,7 @@
  * - Centralised, asynchronous error logging.
  */
 
+import { ChatMessage, ConversationContext, GeneralMemoryEntry } from "@/types";
 import {
   createCipheriv,
   createDecipheriv,
@@ -17,11 +18,6 @@ import dotenv from "dotenv";
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import { join, resolve } from "path";
-import {
-  ChatMessage,
-  ConversationContext,
-  GeneralMemoryEntry,
-} from "../types/types.js";
 import logger from "./logger.js";
 
 dotenv.config();
