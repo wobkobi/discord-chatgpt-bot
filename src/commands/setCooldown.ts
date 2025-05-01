@@ -1,13 +1,17 @@
 // src/commands/setcooldown.ts
 
-import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import {
+  ChatInputCommandInteraction,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "discord.js";
 import {
   defaultCooldownConfig,
   GuildCooldownConfig,
   guildCooldownConfigs,
   saveGuildCooldownConfigs,
 } from "../config/index.js";
-import logger from "../utils/logger";
+import logger from "../utils/logger.js";
 
 const OWNER_ID = process.env.OWNER_ID;
 
@@ -42,14 +46,14 @@ export async function execute(
     if (!OWNER_ID || interaction.user.id !== OWNER_ID) {
       await interaction.reply({
         content: "🚫 Only the bot owner can change cooldown settings.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     if (!interaction.guildId) {
       await interaction.reply({
         content: "⚠️ This command must be used in a server.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -63,7 +67,7 @@ export async function execute(
       logger.info(`Cooldown reset to defaults for guild ${guildId}`);
       await interaction.reply({
         content: "✅ Cooldown settings reset to defaults.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -80,7 +84,7 @@ export async function execute(
     if (time < 0) {
       await interaction.reply({
         content: "⏱️ Cooldown time must be zero or positive.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -98,14 +102,14 @@ export async function execute(
     );
     await interaction.reply({
       content: `✅ Cooldown updated: **${time}s**, scope: **${perUser ? "per user" : "global"}**`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   } catch (err) {
     logger.error("[setcooldown] unexpected error:", err);
     if (!interaction.replied) {
       await interaction.reply({
         content: "❌ An error occurred while updating cooldown.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }

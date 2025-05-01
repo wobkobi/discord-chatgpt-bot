@@ -1,132 +1,190 @@
 # Discord ChatGPT Bot
 
-A Discord bot built with Discord.js and OpenAI's ChatGPT integration that supports conversation memory, dynamic emoji usage, cooldown management, clone memory functionality—and now full multimodal (vision) support plus a shared Markdown guide injected into every prompt.
+A Discord bot built with Discord.js and OpenAI’s ChatGPT integration.  
+Features conversation memory, persona/clone modes, dynamic emoji replacement, cooldowns, LaTeX math rendering, and multimodal vision support.
 
-## Features
+All code lives under `src/`, organised into Controllers, Services, Store, Utils, Commands and Config.
 
-- **Interactive Conversation Handling:**  
-  Supports persistent conversation context with memory functions for individual users, clones, and guild-level memory.
+---
 
-- **Persona & Clone Memory (Optional):**
+## 📂 Project Structure
 
-  - Toggle on/off via `USE_PERSONA` in your `.env`.
-  - When on, injects a richly formatted persona + long-term memory for each user.
-  - Special “clone” user ID (`cloneUserId`) whose speech style is inferred from recent messages.
+```txt
+src/
+├─ commands/                # Slash-command modules
+│   ├─ ask.ts
+│   ├─ checkCredits.ts
+│   ├─ setCooldown.ts
+│   └─ stop.ts
+│
+├─ config/                  # Static JSON & environment config
+│   ├─ persona.json
+│   └─ index.ts
+│
+├─ controllers/             # Discord event handlers
+│   ├─ messageController.ts
+│   └─ interactionController.ts
+│
+├─ services/                # Core logic (AI prompts, LaTeX → image, memory)
+│   ├─ replyService.ts
+│   ├─ latexService.ts
+│   └─ characterService.ts
+│
+├─ store/                   # In-memory + persisted state
+│   ├─ cloneMemory.ts
+│   └─ userMemory.ts
+│
+├─ utils/                   # Generic helpers
+│   ├─ discordHelpers.ts
+│   ├─ cooldown.ts
+│   ├─ fileUtils.ts
+│   └─ logger.ts
+│
+├─ data/                    # Runtime artifacts (math images, logs…)
+│   └─ output/
+│
+└─ index.ts                 # Entry point: hooks controllers, starts bot
+```
 
-- **Multimodal Vision Support:**
+---
 
-  - Automatically detects image attachments and passes their URLs as `image_url` blocks to OpenAI’s vision-capable models (e.g. `gpt-4o`).
-  - Use models like `gpt-4.1-mini`, `gpt-image-1`, etc.
+## 🚀 Features
 
-- **Shared Markdown Guide Injection:**  
-  A comprehensive Discord-Markdown guide block is now defined once in `characterDescription.ts` and always injected as a **system** message, ensuring the model knows exactly how to format its output.
+- **Persistent Conversation Context**  
+  Thread-aware, auto-summarises after 10 messages into long-term memory.
 
-- **Cooldown Management:**  
-  Prevents spam by enforcing cooldowns on commands and messages.
+- **Persona & Clone Memory**  
+  Toggle via `USE_PERSONA` in `.env`.  
+  Special `cloneUserId` whose style is learned from recent messages.
 
-  - Global vs per-user cooldown: `/setcooldown` command
-  - Default cooldown time and behavior configurable in `config.ts`
+- **Shared Markdown Guide**  
+  Injects a complete Discord-Markdown cheat-sheet into every system prompt.
 
-- **Slash Commands:**
+- **Cooldown Management**  
+  `/setCooldown` to adjust per-guild or per-user cooldowns.
 
-  - `/ask`: Ask the bot a question privately.
-  - `/setcooldown`: _(Owner only)_ Configure server cooldown settings.
-  - `/stop`: _(Owner only)_ Safely shut down the bot.
+- **Slash Commands**
 
-- **Dynamic Emoji Usage:**  
-  Replaces `:emoji_name:` shortcodes with your server’s custom emojis when replying in guild channels.
+  - `/ask` – Ask the bot a question via DM.
+  - `/checkCredits` – Show remaining OpenAI quota.
+  - `/setCooldown` – (Owner only) Change cooldown.
+  - `/stop` – (Owner only) Gracefully shut down.
 
-## Installation
+- **Dynamic Emoji Replacement**  
+  Replaces `:emoji_name:` with your server’s custom emoji tags.
 
-1. **Clone the Repository:**
+- **Math Rendering**  
+  Renders `\[ … \]` LaTeX blocks to PNG (white background + border).
 
-   ```bash
-   git clone https://github.com/wobkobi/ChatGPT-Discord-Bot.git
-   cd ChatGPT-Discord-Bot
-   ```
+- **Multimodal Vision**  
+  For image attachments, passes `[image_url]` blocks into gpt-4o.
 
-2. **Install Dependencies:**
+---
 
-   ```bash
-   npm install
-   ```
+## 📥 Installation
 
-3. **Character Description Setup:**
+```bash
+git clone https://github.com/your-org/ChatGPT-Discord-Bot.git
+cd ChatGPT-Discord-Bot
+npm install
+```
 
-   We now provide a **single** `characterDescription.ts` exporting the persona, `fixMathFormatting`, and a shared `markdownGuide`.  
-   Rename the example and customise as needed:
+---
 
-   ```bash
-   mv src/data/characterDescription.ts.example src/data/characterDescription.ts
-   ```
+## ⚙️ Configuration
 
-## Configuration
-
-Create a `.env` file in the root directory with:
+Copy and edit `.env.example` to `.env`:
 
 ```dotenv
-# Discord
+# Discord credentials
 BOT_TOKEN=your_discord_bot_token
 CLIENT_ID=your_discord_client_id
 OWNER_ID=your_discord_owner_id
 
 # OpenAI
 OPENAI_API_KEY=your_openai_api_key
+USE_FINE_TUNED_MODEL=false
+FINE_TUNED_MODEL_NAME=ft-model-name
 
-# Optional feature toggles
-USE_PERSONA=true                # inject persona & memory
-USE_FINE_TUNED_MODEL=false      # toggle using your FT model
-FINE_TUNED_MODEL_NAME=ft-model  # if FT is enabled
+# Persona toggle
+USE_PERSONA=true
 
-# Encryption
-ENCRYPTION_KEY_BASE=your_secret
+# Cooldown defaults
+DEFAULT_COOLDOWN_SECONDS=5
 ```
 
-## Running the Bot
+In `src/config/persona.json` define your persona:
+
+````json
+{
+  "cloneUserId": "1234567890",
+  "baseDescription": "You are a helpful AI assistant…",
+  "markdownGuide": "```md\n…Discord Markdown Guide…```"
+}
+````
+
+---
+
+## ▶️ Running
+
+**Development** (ts-node + hot-reload):
+
+```bash
+npm run dev
+```
+
+**Production** (compile + run):
 
 ```bash
 npm run start
 ```
 
-- Registers slash commands
-- Initialises memory caches
-- Listens for messages, DMs, and interactions
+---
 
-## How It Works
+## 📝 How It Works
 
-1. **Message Create**
+1. **Startup**
 
-   - Ignores bots & `@everyone`.
-   - Requires a DM, explicit mention, or rare 1/50 “interjection” chance in guild.
-   - Displays a typing indicator (`channel.sendTyping()`).
+   - Load slash commands from `src/commands`.
+   - Register them globally via Discord REST.
+   - Initialise memory caches.
+   - Only then set “ready” flag—messages before ready are ignored.
 
-2. **Conversation Context**
+2. **Message Handling**
 
-   - Maps each thread by channel-messageID or reply chain.
-   - Stores up to 10 messages before summarising into long-term memory (user or clone).
+   - `controllers/messageController.ts` bails on bots, `@everyone`, or before ready.
+   - Builds prompt via `services/replyService.ts`:
+     1. Persona + memory (if enabled)
+     2. Markdown guide
+     3. Thread history + image URLs
+   - Sends one ChatCompletion to gpt-4o.
+   - Renders any `\[ … \]` math via `services/latexService.ts`.
+   - Replies once with text + math images attachments.
 
-3. **Prompt Assembly (`generateReply`)**
+3. **Slash Commands**
+   - Dispatched in `controllers/interactionController.ts`.
+   - Each module in `commands/` exports `data` + `execute()`.
 
-   - Chooses `gpt-4o` (or your fine-tuned model).
-   - **Always** injects:
-     1. Persona & memory (if `USE_PERSONA`)
-     2. Reply-to / channel history notes (if present)
-     3. **Global Markdown guide** (`markdownGuide`)
-   - Walks the reply chain, converts to text blocks (and `image_url` blocks for attachments).
-   - Sends a single ChatCompletion with a mixed `content` array of `{ type: "text" }` and `{ type: "image_url" }` entries.
+---
 
-4. **Response Handling**
-   - Applies `fixMathFormatting` + mention & emoji normalisation
-   - Replies back in Discord and logs to memory
+## 🛠️ Scripts
 
-## Contributing
+- `npm run dev` – start in watch mode (ts-node/esm).
+- `npm run start` – build (`tsc`) + run compiled JS.
+- `npm run build` – TypeScript compile only.
 
-PRs welcome! Please file issues or pull requests for:
+---
 
-- New vision integrations (e.g. file uploads)
-- Additional feature toggles or memory behaviors
-- Improvements to the shared Markdown guide
+## 🤝 Contributing
 
-## License
+PRs welcome! Please:
 
-Licensed under the [MIT License](LICENSE).
+- Update/add slash commands under `src/commands`.
+- Add services for new features under `src/services`.
+- Keep controllers focused on Discord events.
+
+---
+
+## 📜 License
+
+This project is licensed under the [MIT License](LICENSE).

@@ -1,6 +1,10 @@
 // src/commands/ask.ts
 
-import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import {
+  ChatInputCommandInteraction,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "discord.js";
 import dotenv from "dotenv";
 import OpenAI, { APIError } from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat";
@@ -39,7 +43,7 @@ export async function execute(
   const question = interaction.options.getString("question", true).trim();
   logger.info(`[ask] ${userId} → "${question}"`);
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   // Choose model
   const useFT = process.env.USE_FINE_TUNED_MODEL === "true";
