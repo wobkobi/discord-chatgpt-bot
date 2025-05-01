@@ -1,12 +1,16 @@
+// src/index.ts
+
 import { REST } from "@discordjs/rest";
 import { Routes } from "discord-api-types/v10";
 import {
+  ChatInputCommandInteraction,
   Client,
   Collection,
   GatewayIntentBits,
   Interaction,
   Message,
   Partials,
+  SlashCommandBuilder,
 } from "discord.js";
 import dotenv from "dotenv";
 import { existsSync, readdirSync } from "fs";
@@ -14,22 +18,32 @@ import OpenAI from "openai";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
 import { handleNewMessage, run } from "./handlers/createMessage.js";
-import { initializeUserMemory } from "./memory/userMemory.js";
+import { initialiseUserMemory } from "./memory/userMemory.js";
 import logger from "./utils/logger.js";
 
 dotenv.config();
 
-// Determine commands folder
-const prodCommandsPath = join(resolve(), "build", "commands");
-const devCommandsPath = join(resolve(), "src", "commands");
-const commandsPath = existsSync(prodCommandsPath)
-  ? prodCommandsPath
-  : devCommandsPath;
-const fileExtension = existsSync(prodCommandsPath) ? ".js" : ".ts";
+// Determine where our built vs. src commands live
+const isProd = existsSync(join(resolve(), "build", "commands"));
+const commandsPath = isProd
+  ? join(resolve(), "build", "commands")
+  : join(resolve(), "src", "commands");
+const extension = isProd ? ".js" : ".ts";
 
-logger.info(`Loading commands from: ${commandsPath}`);
+logger.info(`🔍 Loading commands from ${commandsPath}`);
 
-// Create Discord client
+// Define the exact shape of our slash‐command modules
+interface SlashCommandModule {
+  data: SlashCommandBuilder;
+  execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
+}
+
+declare module "discord.js" {
+  interface Client {
+    commands: Collection<string, SlashCommandModule>;
+  }
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -40,56 +54,94 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-client.commands = new Collection();
+client.commands = new Collection<string, SlashCommandModule>();
 
-// Load slash commands
+// Dynamically import each command file and register it
 for (const file of readdirSync(commandsPath).filter((f) =>
-  f.endsWith(fileExtension)
+  f.endsWith(extension)
 )) {
-  const url = pathToFileURL(join(commandsPath, file)).href;
-  const mod = await import(url);
-  if (mod.data && mod.execute) {
-    client.commands.set(mod.data.name, mod);
+  try {
+    const url = pathToFileURL(join(commandsPath, file)).href;
+    const mod = (await import(url)) as Partial<SlashCommandModule>;
+    if (
+      mod.data instanceof SlashCommandBuilder &&
+      typeof mod.execute === "function"
+    ) {
+      client.commands.set(mod.data.name, {
+        data: mod.data,
+        execute: mod.execute,
+      });
+    } else {
+      logger.warn(`⚠️ ${file} does not export a valid SlashCommandModule.`);
+    }
+  } catch (err) {
+    logger.error(`❌ Failed to load ${file}:`, err);
   }
 }
-logger.info(`Loaded ${client.commands.size} slash command(s).`);
+logger.info(`✅ Loaded ${client.commands.size} slash command(s).`);
 
-// Register global slash commands
+// Register slash commands globally
 async function registerGlobalCommands() {
   const rest = new REST({ version: "10" }).setToken(process.env.BOT_TOKEN!);
-  const body = Array.from(client.commands.values()).map((c) => c.data.toJSON());
+  const payload = Array.from(client.commands.values()).map((c) =>
+    c.data.toJSON()
+  );
+
   try {
-    logger.info("Registering global slash commands...");
+    logger.info("🌐 Registering global slash commands...");
     await rest.put(Routes.applicationCommands(process.env.CLIENT_ID!), {
-      body,
+      body: payload,
     });
-    logger.info("Slash commands registered.");
+    logger.info("✅ Slash commands registered.");
   } catch (err) {
-    logger.error("Failed to register slash commands:", err);
+    logger.error("❌ Failed to register slash commands:", err);
   }
 }
 
-// OpenAI client
+// Initialise OpenAI client
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Forward all non-bot messages to the handler
-client.on("messageCreate", async (message: Message) => {
-  if (message.author.bot) return;
-  await (
-    await handleNewMessage(openai, client)
-  )(message);
+// We'll build this once on ready
+let messageHandler: (message: Message) => Promise<void>;
+
+client.once("ready", async () => {
+  logger.info(`🤖 Logged in as ${client.user!.tag}`);
+
+  // Register slash commands & init user memory
+  await registerGlobalCommands();
+  await initialiseUserMemory();
+
+  // Build our DM/mention handler a single time
+  messageHandler = await handleNewMessage(openai, client);
+  logger.info("🔄 Message handler initialised.");
+
+  // Preload any existing conversation files
+  await run(client);
+  logger.info("💾 Conversations preloaded.");
 });
 
-// Slash command handling
+// Route every non-bot message into our handler
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+  try {
+    await messageHandler(message);
+  } catch (err) {
+    logger.error("🛑 Error in message handler:", err);
+  }
+});
+
+// Slash‐command dispatcher
 client.on("interactionCreate", async (interaction: Interaction) => {
   if (!interaction.isChatInputCommand()) return;
-  const cmd = client.commands.get(interaction.commandName);
-  if (!cmd) return;
+
+  const command = client.commands.get(interaction.commandName);
+  if (!command) return;
+
   try {
-    await cmd.execute(interaction);
+    await command.execute(interaction as ChatInputCommandInteraction);
   } catch (err) {
-    logger.error("Command error:", err);
-    const reply = { content: "Error executing command.", ephemeral: true };
+    logger.error(`🛑 Error executing /${interaction.commandName}:`, err);
+    const reply = { content: "⚠️ There was an error.", ephemeral: true };
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp(reply);
     } else {
@@ -98,17 +150,20 @@ client.on("interactionCreate", async (interaction: Interaction) => {
   }
 });
 
-// Ready
-client.once("ready", async () => {
-  logger.info("Bot ready.");
-  await registerGlobalCommands();
-  await initializeUserMemory();
-  logger.info("Memory initialized.");
-  await run(client);
+// Global unhandled‐rejection guard
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled promise rejection:", reason);
 });
 
-// Login
+// Graceful shutdown on Ctrl+C
+process.on("SIGINT", () => {
+  logger.info("🛑 Shutting down...");
+  client.destroy();
+  process.exit(0);
+});
+
+// Kick it off
 client
   .login(process.env.BOT_TOKEN)
-  .then(() => logger.info("Logged in."))
-  .catch((err) => logger.error("Login failed:", err));
+  .then(() => logger.info("🚀 Login successful."))
+  .catch((err) => logger.error("❌ Login failed:", err));

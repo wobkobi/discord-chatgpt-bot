@@ -1,74 +1,104 @@
+// src/commands/ask.ts
+
 import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 import dotenv from "dotenv";
-import OpenAI from "openai";
-import { ChatCompletionMessageParam } from "openai/resources/chat";
+import OpenAI, { APIError } from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat";
+import {
+  cloneUserId,
+  getCharacterDescription,
+} from "../data/characterDescription.js";
+import { cloneMemory } from "../memory/cloneMemory.js";
+import { userMemory } from "../memory/userMemory.js";
 import logger from "../utils/logger.js";
 
 dotenv.config();
 
+const OPENAI_KEY = process.env.OPENAI_API_KEY!;
+if (!OPENAI_KEY) {
+  throw new Error("OPENAI_API_KEY is required");
+}
+
+const openai = new OpenAI({ apiKey: OPENAI_KEY });
+
 export const data = new SlashCommandBuilder()
   .setName("ask")
   .setDescription("Ask the bot a question privately")
-  .addStringOption((option) =>
-    option
+  .addStringOption((opt) =>
+    opt
       .setName("question")
-      .setDescription("The question you want to ask")
+      .setDescription("Your question for the assistant")
       .setRequired(true)
   );
 
-/**
- * Executes the /ask command by sending the user's question to OpenAI and
- * editing the reply with the generated answer.
- *
- * @param interaction - The command interaction object.
- */
 export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
-  // Defer the reply so that only the user sees it.
+  const userId = interaction.user.id;
+  const question = interaction.options.getString("question", true).trim();
+  logger.info(`[ask] ${userId} → "${question}"`);
+
   await interaction.deferReply({ ephemeral: true });
 
-  // Retrieve the question provided by the user.
-  const question = interaction.options.getString("question", true);
+  // Choose model
+  const useFT = process.env.USE_FINE_TUNED_MODEL === "true";
+  const modelName = useFT ? process.env.FINE_TUNED_MODEL_NAME! : "gpt-4o";
 
-  // Create a new OpenAI client instance.
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
+  // Build the prompt messages
+  const messages: ChatCompletionMessageParam[] = [];
 
-  // Build the prompt for OpenAI.
-  const prompt: ChatCompletionMessageParam[] = [
-    {
-      role: "system",
-      content: "You are a helpful and concise assistant.",
-      name: undefined,
-    },
-    {
-      role: "user",
-      content: question,
-      name: undefined,
-    },
-  ];
+  // 1) persona + memory
+  if (process.env.USE_PERSONA === "true") {
+    const persona = await getCharacterDescription(userId);
+    messages.push({ role: "system", content: persona });
+
+    const memArr =
+      userId === cloneUserId
+        ? cloneMemory.get(userId) || []
+        : userMemory.get(userId) || [];
+    if (memArr.length) {
+      const prefix =
+        userId === cloneUserId ? "Clone memory:\n" : "Long-term memory:\n";
+      messages.push({
+        role: "system",
+        content: prefix + memArr.map((e) => e.content).join("\n"),
+      });
+    }
+  }
+
+  // 2) the user’s question
+  messages.push({ role: "user", content: question });
+
+  logger.info(
+    `[ask] Prompt → model=${modelName}, messages=\n${JSON.stringify(
+      messages,
+      null,
+      2
+    )}`
+  );
 
   try {
-    // Request a completion from OpenAI.
+    const start = Date.now();
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: prompt,
+      model: modelName,
+      messages,
       max_tokens: 1000,
       top_p: 0.6,
       frequency_penalty: 0.5,
+      temperature: 0.7,
     });
-    const answer = response.choices[0]?.message.content;
-    if (!answer) {
-      throw new Error("No answer returned from OpenAI.");
-    }
-    // Edit the deferred reply with the generated answer.
+
+    const answer = response.choices[0]?.message.content?.trim();
+    if (!answer) throw new Error("Empty response from OpenAI");
+
+    logger.info(`[ask] Responded in ${Date.now() - start}ms`);
     await interaction.editReply({ content: answer });
-  } catch (error: unknown) {
-    logger.error("Error processing /ask command:", error);
-    await interaction.editReply({
-      content: "There was an error processing your request.",
-    });
+  } catch (err: unknown) {
+    logger.error("[ask] OpenAI error:", err);
+    const msg =
+      err instanceof APIError && err.code === "insufficient_quota"
+        ? "⚠️ The assistant is out of quota right now."
+        : "❌ Oops, something went wrong. Please try again later.";
+    await interaction.editReply({ content: msg });
   }
 }

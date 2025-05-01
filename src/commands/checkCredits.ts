@@ -1,20 +1,37 @@
+// src/commands/checkcredits.ts
+
 import axios from "axios";
-import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import {
+  ChatInputCommandInteraction,
+  EmbedBuilder,
+  SlashCommandBuilder,
+} from "discord.js";
 import dotenv from "dotenv";
 import logger from "../utils/logger.js";
+
 dotenv.config();
 
 export const data = new SlashCommandBuilder()
   .setName("checkcredits")
-  .setDescription("Check remaining OpenAI API credits (Owner only).");
+  .setDescription("Check remaining OpenAI API credits (Owner only)");
 
 export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
-  // Restrict command usage to the bot owner.
-  if (interaction.user.id !== process.env.OWNER_ID) {
+  const ownerId = process.env.OWNER_ID;
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!ownerId || !apiKey) {
+    logger.error("[checkcredits] Missing OWNER_ID or OPENAI_API_KEY in .env");
     await interaction.reply({
-      content: "This command is owner only.",
+      content: "⚠️ Bot isn’t configured correctly.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (interaction.user.id !== ownerId) {
+    await interaction.reply({
+      content: "🚫 You’re not allowed to use this command.",
       ephemeral: true,
     });
     return;
@@ -23,20 +40,47 @@ export async function execute(
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const response = await axios.get(
-      "https://api.openai.com/dashboard/billing/credit_grants",
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    const { data } = await axios.get<{
+      total_granted: number;
+      total_used: number;
+      total_available: number;
+    }>("https://api.openai.com/dashboard/billing/credit_grants", {
+      headers: { Authorisation: `Bearer ${apiKey}` },
+      timeout: 5000,
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle("💳 OpenAI API Credits")
+      .setColor("Blue")
+      .addFields(
+        {
+          name: "Total Granted",
+          value: `\`${data.total_granted.toLocaleString()}\``,
+          inline: true,
         },
-      }
-    );
-    const { total_granted, total_used, total_available } = response.data;
-    await interaction.editReply(
-      `**OpenAI API Credit Info**\nTotal Granted: ${total_granted}\nTotal Used: ${total_used}\nTotal Available: ${total_available}`
-    );
-  } catch (error: unknown) {
-    logger.error("Error checking OpenAI credits:", error);
-    await interaction.editReply("Failed to fetch OpenAI credit information.");
+        {
+          name: "Total Used",
+          value: `\`${data.total_used.toLocaleString()}\``,
+          inline: true,
+        },
+        {
+          name: "Available",
+          value: `\`${data.total_available.toLocaleString()}\``,
+          inline: true,
+        }
+      )
+      .setFooter({ text: `Requested by ${interaction.user.tag}` })
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (err: unknown) {
+    logger.error("[checkcredits] failed to fetch credits:", err);
+    const message =
+      axios.isAxiosError(err) && err.response
+        ? `Failed (${err.response.status} ${err.response.statusText})`
+        : "An unexpected error occurred.";
+    await interaction.editReply({
+      content: `❌ Could not fetch credit info: ${message}`,
+    });
   }
 }
