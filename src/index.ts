@@ -27,12 +27,16 @@ import logger from "./utils/logger.js";
 
 dotenv.config();
 
-// Determine command directory based on build vs. src
-const isProd = existsSync(join(resolve(), "build", "commands"));
-const commandsPath = isProd
-  ? join(resolve(), "build", "commands")
-  : join(resolve(), "src", "commands");
-const extension = isProd ? ".js" : ".ts";
+// Determine commands directory dynamically
+const buildCommandsPath = join(resolve(), "build", "commands");
+const isRunningTS = __filename.endsWith(".ts");
+
+const commandsPath =
+  !isRunningTS && existsSync(buildCommandsPath)
+    ? buildCommandsPath
+    : join(resolve(), "src", "commands");
+
+const extension = !isRunningTS && existsSync(buildCommandsPath) ? ".js" : ".ts";
 
 logger.info(`🔍 Loading commands from ${commandsPath}`);
 
@@ -65,7 +69,7 @@ export function isBotReady(): boolean {
 }
 
 /**
- * Discord client instance with specified intents and partials.
+ * Discord client with specified intents and partials.
  */
 const client = new Client({
   intents: [
@@ -76,38 +80,38 @@ const client = new Client({
   ],
   partials: [Partials.Channel],
 });
-
 client.commands = new Collection<string, SlashCommandModule>();
 
-// Dynamically import and register each command
-for (const file of readdirSync(commandsPath).filter((f) =>
-  f.endsWith(extension)
-)) {
-  (async () => {
-    try {
-      const url = pathToFileURL(join(commandsPath, file)).href;
-      const mod = (await import(url)) as Partial<SlashCommandModule>;
-      if (
-        mod.data instanceof SlashCommandBuilder &&
-        typeof mod.execute === "function"
-      ) {
-        client.commands.set(mod.data.name, {
-          data: mod.data,
-          execute: mod.execute,
-        });
-      } else {
-        logger.warn(`⚠️ ${file} does not export a valid SlashCommandModule.`);
+// Dynamically import and register each command, awaiting all before proceeding
+(async () => {
+  const files = readdirSync(commandsPath).filter((f) => f.endsWith(extension));
+  await Promise.all(
+    files.map(async (file) => {
+      try {
+        const url = pathToFileURL(join(commandsPath, file)).href;
+        const mod = (await import(url)) as Partial<SlashCommandModule>;
+        if (
+          mod.data instanceof SlashCommandBuilder &&
+          typeof mod.execute === "function"
+        ) {
+          client.commands.set(mod.data.name, {
+            data: mod.data,
+            execute: mod.execute,
+          });
+        } else {
+          logger.warn(`⚠️ ${file} does not export a valid SlashCommandModule.`);
+        }
+      } catch (err) {
+        logger.error(`❌ Failed to load ${file}:`, err);
       }
-    } catch (err) {
-      logger.error(`❌ Failed to load ${file}:`, err);
-    }
-  })();
-}
+    })
+  );
 
-logger.info(`✅ Loaded ${client.commands.size} slash command(s):`);
-for (const name of client.commands.keys()) {
-  logger.info(`    • ${name}`);
-}
+  logger.info(`✅ Loaded ${client.commands.size} slash command(s):`);
+  for (const name of client.commands.keys()) {
+    logger.info(`    • ${name}`);
+  }
+})();
 
 /**
  * Registers all loaded slash commands globally with Discord.
