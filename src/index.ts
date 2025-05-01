@@ -19,7 +19,7 @@ import dotenv from "dotenv";
 import { existsSync, readdirSync } from "fs";
 import OpenAI from "openai";
 import { join, resolve } from "path";
-import { pathToFileURL } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 
 import { handleNewMessage, run } from "./controllers/messageController.js";
 import { initialiseUserMemory } from "./store/userMemory.js";
@@ -28,8 +28,10 @@ import logger from "./utils/logger.js";
 dotenv.config();
 
 // Determine commands directory dynamically
-const buildCommandsPath = join(resolve(), "build", "commands");
+const __filename = fileURLToPath(import.meta.url);
 const isRunningTS = __filename.endsWith(".ts");
+
+const buildCommandsPath = join(resolve(), "build", "commands");
 
 const commandsPath =
   !isRunningTS && existsSync(buildCommandsPath)
