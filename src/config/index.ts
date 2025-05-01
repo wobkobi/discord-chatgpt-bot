@@ -16,7 +16,7 @@ export interface GuildCooldownConfig {
 /** Fallback settings used when no guild-specific config is found. */
 export const defaultCooldownConfig: GuildCooldownConfig = {
   useCooldown: true,
-  cooldownTime: 1.25,
+  cooldownTime: 2.5,
   perUserCooldown: true,
 };
 

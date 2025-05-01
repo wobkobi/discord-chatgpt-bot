@@ -114,6 +114,7 @@ export async function renderMathToJpg(
   } catch {
     buffer = await sharp(svgPath)
       .flatten({ background: "#fff" })
+      .extend({ top: 20, bottom: 20, left: 20, right: 20, background: "#fff" })
       .jpeg({ quality: 95 })
       .toBuffer();
     await fs.writeFile(outPath, buffer);

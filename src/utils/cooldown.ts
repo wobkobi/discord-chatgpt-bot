@@ -14,7 +14,7 @@ import {
  * @param guildId - The ID of the guild, or null for direct messages.
  * @returns The cooldown settings to apply.
  */
-function getCooldownConfig(guildId: string | null): GuildCooldownConfig {
+export function getCooldownConfig(guildId: string | null): GuildCooldownConfig {
   if (!guildId) return defaultCooldownConfig;
   return guildCooldownConfigs.get(guildId) ?? defaultCooldownConfig;
 }

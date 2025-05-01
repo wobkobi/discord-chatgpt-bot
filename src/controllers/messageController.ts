@@ -1,12 +1,12 @@
 import { ConversationContext } from "@/types";
 import { Client, Message } from "discord.js";
 import OpenAI from "openai";
-import { defaultCooldownConfig } from "../config/index.js";
 import { cloneUserId } from "../services/characterService.js";
 import { generateReply } from "../services/replyService.js";
 import { updateCloneMemory } from "../store/cloneMemory.js";
 import { updateUserMemory } from "../store/userMemory.js";
 import {
+  getCooldownConfig,
   getCooldownContext,
   isCooldownActive,
   manageCooldown,
@@ -45,7 +45,23 @@ export async function handleNewMessage(
     const mentioned = message.guild
       ? message.mentions.has(client.user!.id)
       : true;
-    const interject = message.guild && !mentioned && Math.random() < 1 / 50;
+
+    // decide whether to interject, but only if no bot has replied in the last 5 messages
+    let interject = false;
+    if (message.guild && !mentioned) {
+      // fetch the last 5 messages (excluding the one we just received)
+      const fetched = await message.channel.messages.fetch({ limit: 6 });
+      // drop the current message, look at the previous 5
+      const lastFive = Array.from(fetched.values())
+        .sort((a, b) => b.createdTimestamp - a.createdTimestamp)
+        .slice(1, 6);
+      // if none of those was from a bot, roll the dice
+      const botInLastFive = lastFive.some((m) => m.author.bot);
+      if (!botInLastFive && Math.random() < 1 / 50) {
+        interject = true;
+      }
+    }
+
     if (message.guild && !mentioned && !interject) return;
 
     // show typing
@@ -66,9 +82,14 @@ export async function handleNewMessage(
     // cooldown enforcement
     const cdKey = getCooldownContext(guildId, userId);
     if (useCooldown && isCooldownActive(cdKey)) {
-      const cd = defaultCooldownConfig.cooldownTime.toFixed(2);
+      // pull the real cooldownTime (in seconds) for this guild/user
+      const { cooldownTime } = getCooldownConfig(guildId);
+      const cd = cooldownTime.toFixed(2);
       const warn = await message.reply(`⏳ Cooldown: ${cd}s`);
-      setTimeout(() => warn.delete().catch(() => {}), 5000);
+
+      // delete the warning exactly when the cooldown window ends
+      setTimeout(() => warn.delete().catch(() => {}), cooldownTime * 1000);
+
       return;
     }
     if (useCooldown) manageCooldown(guildId, userId);
