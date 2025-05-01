@@ -17,7 +17,7 @@ import { existsSync, readdirSync } from "fs";
 import OpenAI from "openai";
 import { join, resolve } from "path";
 import { pathToFileURL } from "url";
-import { handleNewMessage, run } from "./handlers/createMessage.js";
+import { handleNewMessage, run } from "./handlers/messageHandler.js";
 import { initialiseUserMemory } from "./memory/userMemory.js";
 import logger from "./utils/logger.js";
 

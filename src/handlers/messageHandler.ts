@@ -1,17 +1,10 @@
-import { ChatMessage, ConversationContext } from "@/types/types.js";
-import { Client, Guild, Message } from "discord.js";
-import "dotenv/config";
-import OpenAI, { APIError } from "openai";
-import { ChatCompletionMessageParam } from "openai/resources/index.js";
+import { ConversationContext } from "@/types/types";
+import { Client, Message } from "discord.js";
+import OpenAI from "openai";
 import { defaultCooldownConfig } from "../config.js";
-import {
-  cloneUserId,
-  fixMathFormatting,
-  getCharacterDescription,
-  markdownGuide,
-} from "../data/characterDescription.js";
-import { cloneMemory, updateCloneMemory } from "../memory/cloneMemory.js";
-import { updateUserMemory, userMemory } from "../memory/userMemory.js";
+import { cloneUserId } from "../data/characterDescription.js";
+import { updateCloneMemory } from "../memory/cloneMemory.js";
+import { updateUserMemory } from "../memory/userMemory.js";
 import {
   getCooldownContext,
   isCooldownActive,
@@ -19,202 +12,22 @@ import {
   useCooldown,
 } from "../utils/cooldown.js";
 import {
+  createChatMessage,
+  replaceEmojiShortcodes,
+  summariseConversation,
+} from "../utils/discordHelpers.js";
+import {
   loadConversations,
   markContextUpdated,
   saveConversations,
 } from "../utils/fileUtils.js";
-import { renderMathToPng } from "../utils/latexRenderer.js";
 import logger from "../utils/logger.js";
+import { generateReply } from "./replyGenerator.js";
 
 const MESSAGE_LIMIT = 10;
-
-// ---------------------------------------------
-// Helpers
-// ---------------------------------------------
-
-/**
- * Normalize Discord mention syntax and strip stray '@'.
- */
-function fixMentions(text: string): string {
-  return text
-    .replace(/<@!?(\d+)>/g, "<@$1>")
-    .replace(/<(\d+)>/g, "<@$1>")
-    .replace(/@/g, "");
-}
-
-/**
- * Apply Discord markdown rules and escape math formatting.
- */
-function applyDiscordMarkdownFormatting(text: string): string {
-  return fixMathFormatting(fixMentions(text));
-}
-
-/**
- * Replace colon-based shortcodes with actual guild emoji tags.
- */
-function replaceEmojiShortcodes(text: string, guild: Guild): string {
-  return text.replace(/:([a-zA-Z0-9_]+):/g, (_, name) => {
-    const e = guild.emojis.cache.find((e) => e.name === name);
-    return e ? `<:${e.name}:${e.id}>` : `:${name}:`;
-  });
-}
-
-/**
- * Construct a ChatMessage object from a Discord Message.
- */
-function createChatMessage(
-  message: Message,
-  role: "user" | "assistant",
-  botName?: string
-): ChatMessage {
-  const name =
-    role === "user"
-      ? message.author.username.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64)
-      : (botName ?? "Bot");
-  return {
-    id: message.id,
-    role,
-    name,
-    userId: role === "user" ? message.author.id : undefined,
-    content: message.content,
-    replyToId: message.reference?.messageId,
-  };
-}
-
-/**
- * Summarize the last few messages of a conversation for memory.
- */
-function summariseConversation(context: ConversationContext): string {
-  return Array.from(context.messages.values())
-    .slice(-3)
-    .map((m) => m.content)
-    .join("\n");
-}
-
-// ---------------------------------------------
-// Multimodal Reply Generation
-// ---------------------------------------------
-
-/**
- * Generate an AI reply, render any LaTeX blocks to images,
- * and return the cleaned text plus image buffers.
- */
-export async function generateReply(
-  convoHistory: Map<string, ChatMessage>,
-  currentId: string,
-  openai: OpenAI,
-  userId: string,
-  replyToInfo?: string,
-  channelHistory?: string,
-  imageUrls: string[] = [],
-  genericUrls: string[] = []
-): Promise<{ text: string; mathBuffers: Buffer[] }> {
-  // choose model
-  const useFT = process.env.USE_FINE_TUNED_MODEL === "true";
-  const modelName = useFT
-    ? process.env.FINE_TUNED_MODEL_NAME ||
-      (logger.error("FINE_TUNED_MODEL_NAME missing, exiting."),
-      process.exit(1),
-      "")
-    : "gpt-4o";
-
-  // build system+user prompt
-  const messages: ChatCompletionMessageParam[] = [];
-  if (process.env.USE_PERSONA === "true") {
-    const persona = await getCharacterDescription(userId);
-    messages.push({ role: "system", content: persona });
-    const memArr =
-      userId === cloneUserId
-        ? cloneMemory.get(userId) || []
-        : userMemory.get(userId) || [];
-    if (memArr.length) {
-      const prefix =
-        userId === cloneUserId ? "Clone memory:\n" : "Long-term memory:\n";
-      messages.push({
-        role: "system",
-        content: prefix + memArr.map((e) => e.content).join("\n"),
-      });
-    }
-  }
-  if (replyToInfo) messages.push({ role: "system", content: replyToInfo });
-  if (channelHistory)
-    messages.push({
-      role: "system",
-      content: `Recent channel history:\n${channelHistory}`,
-    });
-  messages.push({ role: "system", content: markdownGuide });
-
-  // flatten thread into lines
-  const lines: string[] = [];
-  let cursor: string | undefined = currentId;
-  while (cursor) {
-    const turn = convoHistory.get(cursor);
-    if (!turn) break;
-    const clean = applyDiscordMarkdownFormatting(turn.content);
-    lines.unshift(
-      turn.role === "user" ? `${turn.name} asked: ${clean}` : clean
-    );
-    cursor = turn.replyToId;
-  }
-  for (const url of imageUrls) lines.push(`[image] ${url}`);
-  for (const url of genericUrls) lines.push(`[link]  ${url}`);
-  messages.push({ role: "user", content: lines.join("\n") });
-
-  logger.info(
-    `📝 Prompt → model=${modelName}, lines=${lines.length}\n` +
-      `Prompt context:\n${JSON.stringify(messages, null, 2)}`
-  );
-
-  // call OpenAI
-  let content: string;
-  try {
-    const res = await openai.chat.completions.create({
-      model: modelName,
-      messages,
-      top_p: 0.6,
-      frequency_penalty: 0.5,
-      max_tokens: 2000,
-    });
-    content = res.choices[0]?.message.content?.trim() || "";
-    if (!content) throw new Error("Empty AI response");
-  } catch (err: unknown) {
-    if (useFT && err instanceof APIError && err.code === "model_not_found") {
-      logger.error(`Fine-tuned model not found: ${modelName}`);
-      process.exit(1);
-    }
-    logger.error("OpenAI error:", err);
-    if (err instanceof APIError && err.code === "insufficient_quota") {
-      return { text: "⚠️ Out of quota.", mathBuffers: [] };
-    }
-    throw err;
-  }
-
-  // extract and render math
-  const mathBuffers: Buffer[] = [];
-  const mathMatches = Array.from(content.matchAll(/\\\[(.+?)\\\]/g));
-  for (const m of mathMatches) {
-    const expr = m[1].trim();
-    try {
-      const { buffer } = await renderMathToPng(expr);
-      mathBuffers.push(buffer);
-    } catch (e) {
-      console.error("Math→PNG failed:", e);
-    }
-  }
-
-  // remove all math blocks and collapse blank lines
-  let replyText = content.replace(/\\\[(.+?)\\\]/g, "");
-  replyText = replyText.replace(/(\r?\n){2,}/g, "\n").trim();
-
-  return { text: replyText, mathBuffers };
-}
-
-// ---------------------------------------------
-// Message handler
-// ---------------------------------------------
-
 const histories = new Map<string, Map<string, ConversationContext>>();
 const idMaps = new Map<string, Map<string, string>>();
+
 /**
  * Returns a function that handles incoming Discord messages,
  * applies cooldowns, updates memory, generates replies, and sends them.
