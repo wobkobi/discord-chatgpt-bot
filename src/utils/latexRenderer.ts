@@ -1,66 +1,122 @@
-import { exec } from "child_process";
+import { createHash } from "crypto";
 import { promises as fs } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
-import { promisify } from "util";
+import { liteAdaptor } from "mathjax-full/js/adaptors/liteAdaptor.js";
+import { RegisterHTMLHandler } from "mathjax-full/js/handlers/html.js";
+import { TeX } from "mathjax-full/js/input/tex.js";
+import { mathjax } from "mathjax-full/js/mathjax.js";
+import { SVG } from "mathjax-full/js/output/svg.js";
+import path from "path";
+import sharp from "sharp";
+import { fileURLToPath } from "url";
 
-const execAsync = promisify(exec);
+// ESM __dirname shim
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Set up MathJax for server-side SVG generation
+const adaptor = liteAdaptor();
+RegisterHTMLHandler(adaptor);
+const tex = new TeX();
+const svgJax = new SVG({ fontCache: "none" });
+const html = mathjax.document("", { InputJax: tex, OutputJax: svgJax });
+
+// Output directory inside container
+const OUTPUT_DIR = path.resolve(__dirname, "../../data/output");
+
+// Ensure output directory exists
+async function ensureOutputDir() {
+  await fs.mkdir(OUTPUT_DIR, { recursive: true });
+}
+ensureOutputDir().catch(console.error);
 
 /**
- * Map human-friendly scales to dvisvgm scale factors.
+ * Compute a deterministic cache key for a LaTeX input.
  */
-const scaleMap: Record<string, string> = {
-  "100%": "1.0",
-  "200%": "2.0",
-  "300%": "3.0",
-  // …extend as needed…
-};
-
-/**
- * Generate a .tex file around the given equation.
- */
-function getLatexTemplate(equation: string) {
-  return `
-\\documentclass[preview]{standalone}
-\\usepackage{amsmath,amssymb}
-\\begin{document}
-${equation}
-\\end{document}`;
+function computeKey(latex: string): string {
+  return createHash("sha256").update(latex).digest("hex").slice(0, 16);
 }
 
 /**
- * Run LaTeX → DVI → SVG inside Docker, then convert to PNG via sharp.
+ * Convert LaTeX to SVG markup string.
+ * Extract only the <svg>…</svg> fragment.
  */
-export async function renderLatexToPng(
-  equation: string,
-  outputScale: keyof typeof scaleMap = "100%"
-): Promise<Buffer> {
-  // 1) create a temp working directory
-  const id = Date.now().toString(36);
-  const work = join(tmpdir(), id);
-  await fs.mkdir(work);
-  await fs.writeFile(join(work, "eq.tex"), getLatexTemplate(equation));
+function renderLatexToSvgString(latex: string): string {
+  const full = html.convert(latex, { display: true });
+  const markup = adaptor.outerHTML(full);
+  const start = markup.indexOf("<svg");
+  const end = markup.lastIndexOf("</svg>");
+  if (start < 0 || end < 0) throw new Error("Invalid SVG from MathJax");
+  return markup.slice(start, end + "</svg>".length);
+}
 
-  // 2) run Dockerized LaTeX → .svg
-  const scale = scaleMap[outputScale];
-  const dockerCmd = `
-    cd ${work} &&
-    docker run --rm -v "$PWD":/data -w /data blang/latex:ubuntu \
-      /bin/bash -lc "\
-        latex -interaction=nonstopmode eq.tex && \
-        dvisvgm --no-fonts --scale=${scale} eq.dvi"
-  `;
-  await execAsync(dockerCmd, { timeout: 30_000 });
+/**
+ * Render LaTeX to SVG file, with caching by content hash.
+ * @param latexInput Raw LaTeX string
+ * @returns Absolute path to generated or cached SVG
+ */
+export async function renderMathToSvg(latexInput: string): Promise<string> {
+  const key = computeKey(latexInput);
+  const outName = `math-${key}.svg`;
+  const outPath = path.join(OUTPUT_DIR, outName);
+  // reuse if exists
+  try {
+    const stat = await fs.stat(outPath);
+    if (stat.isFile()) return outPath;
+  } catch {
+    // not exists, will generate
+  }
+  const svgString = renderLatexToSvgString(latexInput);
+  await fs.writeFile(outPath, svgString, "utf8");
+  return outPath;
+}
 
-  // 3) read the generated SVG
-  const svgPath = join(work, "eq.svg");
-  const svg = await fs.readFile(svgPath);
+/**
+ * Render LaTeX to PNG buffer and cached file.
+ * @param latexInput Raw LaTeX string
+ */
+export async function renderMathToPng(
+  latexInput: string
+): Promise<{ buffer: Buffer; filePath: string }> {
+  const svgPath = await renderMathToSvg(latexInput);
+  const key = path.basename(svgPath, ".svg");
+  const outName = `math-${key}.png`;
+  const outPath = path.join(OUTPUT_DIR, outName);
+  // reuse if exists
+  let buffer: Buffer;
+  try {
+    buffer = await fs.readFile(outPath);
+  } catch {
+    // generate new
+    buffer = await sharp(svgPath, { density: 300 })
+      .flatten({ background: "#fff" })
+      .extend({ top: 20, bottom: 20, left: 20, right: 20, background: "#fff" })
+      .png()
+      .toBuffer();
+    await fs.writeFile(outPath, buffer);
+  }
+  return { buffer, filePath: outPath };
+}
 
-  // 4) convert SVG → PNG (sharp preserves size automatically)
-  const sharp = await import("sharp");
-  const pngBuffer = await sharp.default(svg).png().toBuffer();
-
-  // 5) clean up
-  await fs.rm(work, { recursive: true, force: true });
-  return pngBuffer;
+/**
+ * Render LaTeX to JPEG buffer and cached file.
+ * @param latexInput Raw LaTeX string
+ */
+export async function renderMathToJpg(
+  latexInput: string
+): Promise<{ buffer: Buffer; filePath: string }> {
+  const svgPath = await renderMathToSvg(latexInput);
+  const key = path.basename(svgPath, ".svg");
+  const outName = `math-${key}.jpg`;
+  const outPath = path.join(OUTPUT_DIR, outName);
+  let buffer: Buffer;
+  try {
+    buffer = await fs.readFile(outPath);
+  } catch {
+    buffer = await sharp(svgPath)
+      .flatten({ background: "#fff" })
+      .jpeg({ quality: 95 })
+      .toBuffer();
+    await fs.writeFile(outPath, buffer);
+  }
+  return { buffer, filePath: outPath };
 }

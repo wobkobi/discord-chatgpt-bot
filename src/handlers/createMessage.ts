@@ -23,7 +23,7 @@ import {
   markContextUpdated,
   saveConversations,
 } from "../utils/fileUtils.js";
-import { renderLatexToPng } from "../utils/latexRenderer.js";
+import { renderMathToPng } from "../utils/latexRenderer.js";
 import logger from "../utils/logger.js";
 
 const MESSAGE_LIMIT = 10;
@@ -32,6 +32,9 @@ const MESSAGE_LIMIT = 10;
 // Helpers
 // ---------------------------------------------
 
+/**
+ * Normalize Discord mention syntax and strip stray '@'.
+ */
 function fixMentions(text: string): string {
   return text
     .replace(/<@!?(\d+)>/g, "<@$1>")
@@ -39,10 +42,16 @@ function fixMentions(text: string): string {
     .replace(/@/g, "");
 }
 
+/**
+ * Apply Discord markdown rules and escape math formatting.
+ */
 function applyDiscordMarkdownFormatting(text: string): string {
   return fixMathFormatting(fixMentions(text));
 }
 
+/**
+ * Replace colon-based shortcodes with actual guild emoji tags.
+ */
 function replaceEmojiShortcodes(text: string, guild: Guild): string {
   return text.replace(/:([a-zA-Z0-9_]+):/g, (_, name) => {
     const e = guild.emojis.cache.find((e) => e.name === name);
@@ -50,6 +59,9 @@ function replaceEmojiShortcodes(text: string, guild: Guild): string {
   });
 }
 
+/**
+ * Construct a ChatMessage object from a Discord Message.
+ */
 function createChatMessage(
   message: Message,
   role: "user" | "assistant",
@@ -69,6 +81,9 @@ function createChatMessage(
   };
 }
 
+/**
+ * Summarize the last few messages of a conversation for memory.
+ */
 function summariseConversation(context: ConversationContext): string {
   return Array.from(context.messages.values())
     .slice(-3)
@@ -80,6 +95,10 @@ function summariseConversation(context: ConversationContext): string {
 // Multimodal Reply Generation
 // ---------------------------------------------
 
+/**
+ * Generate an AI reply, render any LaTeX blocks to images,
+ * and return the cleaned text plus image buffers.
+ */
 export async function generateReply(
   convoHistory: Map<string, ChatMessage>,
   currentId: string,
@@ -90,6 +109,7 @@ export async function generateReply(
   imageUrls: string[] = [],
   genericUrls: string[] = []
 ): Promise<{ text: string; mathBuffers: Buffer[] }> {
+  // choose model
   const useFT = process.env.USE_FINE_TUNED_MODEL === "true";
   const modelName = useFT
     ? process.env.FINE_TUNED_MODEL_NAME ||
@@ -98,13 +118,11 @@ export async function generateReply(
       "")
     : "gpt-4o";
 
+  // build system+user prompt
   const messages: ChatCompletionMessageParam[] = [];
-
-  // Persona + memory
   if (process.env.USE_PERSONA === "true") {
     const persona = await getCharacterDescription(userId);
     messages.push({ role: "system", content: persona });
-
     const memArr =
       userId === cloneUserId
         ? cloneMemory.get(userId) || []
@@ -118,46 +136,28 @@ export async function generateReply(
       });
     }
   }
-
-  // Reply context
   if (replyToInfo) messages.push({ role: "system", content: replyToInfo });
-  // Channel history
   if (channelHistory)
     messages.push({
       role: "system",
       content: `Recent channel history:\n${channelHistory}`,
     });
-
-  // Always include markdown guide
   messages.push({ role: "system", content: markdownGuide });
 
-  // Flatten thread
+  // flatten thread into lines
   const lines: string[] = [];
   let cursor: string | undefined = currentId;
   while (cursor) {
     const turn = convoHistory.get(cursor);
     if (!turn) break;
-    const clean = fixMathFormatting(fixMentions(turn.content));
+    const clean = applyDiscordMarkdownFormatting(turn.content);
     lines.unshift(
       turn.role === "user" ? `${turn.name} asked: ${clean}` : clean
     );
     cursor = turn.replyToId;
   }
-  // Append attachments & links
-  for (const url of imageUrls) {
-    lines.push(`[image] ${url}`);
-  }
-  // Append generic link URLs
-  for (const url of genericUrls) {
-    lines.push(`[link]  ${url}`);
-  }
-
-  // Final user message
-  messages.push({
-    role: "user",
-    content: lines.join("\n"),
-  });
-
+  for (const url of imageUrls) lines.push(`[image] ${url}`);
+  for (const url of genericUrls) lines.push(`[link]  ${url}`);
   messages.push({ role: "user", content: lines.join("\n") });
 
   logger.info(
@@ -165,6 +165,7 @@ export async function generateReply(
       `Prompt context:\n${JSON.stringify(messages, null, 2)}`
   );
 
+  // call OpenAI
   let content: string;
   try {
     const res = await openai.chat.completions.create({
@@ -174,8 +175,7 @@ export async function generateReply(
       frequency_penalty: 0.5,
       max_tokens: 2000,
     });
-
-    content = res.choices[0]?.message.content?.trim() ?? "";
+    content = res.choices[0]?.message.content?.trim() || "";
     if (!content) throw new Error("Empty AI response");
   } catch (err: unknown) {
     if (useFT && err instanceof APIError && err.code === "model_not_found") {
@@ -188,22 +188,25 @@ export async function generateReply(
     }
     throw err;
   }
+
+  // extract and render math
   const mathBuffers: Buffer[] = [];
-  const mathRegex = /\\\[(.+?)\\\]/g;
-  let match: RegExpExecArray | null;
-  let reply = content;
-  while ((match = mathRegex.exec(content)) !== null) {
-    const expr = match[1].trim();
+  const mathMatches = Array.from(content.matchAll(/\\\[(.+?)\\\]/g));
+  for (const m of mathMatches) {
+    const expr = m[1].trim();
     try {
-      const buf = await renderLatexToPng(expr);
-      mathBuffers.push(buf);
-      reply = reply.replace(match[0], "");
+      const { buffer } = await renderMathToPng(expr);
+      mathBuffers.push(buffer);
     } catch (e) {
       console.error("Math→PNG failed:", e);
     }
   }
 
-  return { text: reply.trim(), mathBuffers };
+  // remove all math blocks and collapse blank lines
+  let replyText = content.replace(/\\\[(.+?)\\\]/g, "");
+  replyText = replyText.replace(/(\r?\n){2,}/g, "\n").trim();
+
+  return { text: replyText, mathBuffers };
 }
 
 // ---------------------------------------------
@@ -212,31 +215,34 @@ export async function generateReply(
 
 const histories = new Map<string, Map<string, ConversationContext>>();
 const idMaps = new Map<string, Map<string, string>>();
-
+/**
+ * Returns a function that handles incoming Discord messages,
+ * applies cooldowns, updates memory, generates replies, and sends them.
+ */
 export async function handleNewMessage(
   openai: OpenAI,
   client: Client
 ): Promise<(message: Message) => Promise<void>> {
   return async (message: Message): Promise<void> => {
-    // Ignore bots and @everyone
+    // ignore bots & mass mentions
     if (message.author.bot) return;
     if (message.guild && message.mentions.everyone) return;
 
-    // Mention vs. random interjection
+    // decide whether to respond
     const mentioned = message.guild
       ? message.mentions.has(client.user!.id)
       : true;
     const interject = message.guild && !mentioned && Math.random() < 1 / 50;
     if (message.guild && !mentioned && !interject) return;
 
-    // Typing indicator
+    // show typing
     if (message.channel.isTextBased() && "sendTyping" in message.channel) {
       message.channel.sendTyping().catch(() => {});
     }
 
+    // update clone memory if applicable
     const userId = message.author.id;
     const guildId = message.guild?.id || null;
-
     if (userId === cloneUserId) {
       updateCloneMemory(userId, {
         timestamp: Date.now(),
@@ -244,7 +250,7 @@ export async function handleNewMessage(
       });
     }
 
-    // Cooldown
+    // cooldown enforcement
     const cdKey = getCooldownContext(guildId, userId);
     if (useCooldown && isCooldownActive(cdKey)) {
       const cd = defaultCooldownConfig.cooldownTime.toFixed(2);
@@ -254,6 +260,7 @@ export async function handleNewMessage(
     }
     if (useCooldown) manageCooldown(guildId, userId);
 
+    // conversation threading setup
     const contextKey = guildId || userId;
     if (!histories.has(contextKey)) {
       histories.set(contextKey, new Map());
@@ -261,8 +268,6 @@ export async function handleNewMessage(
     }
     markContextUpdated(contextKey);
     const convIds = idMaps.get(contextKey)!;
-
-    // Determine thread ID
     const replyToId = message.reference?.messageId;
     const threadId =
       replyToId && convIds.has(replyToId)
@@ -270,11 +275,9 @@ export async function handleNewMessage(
         : `${message.channel.id}-${message.id}`;
     convIds.set(message.id, threadId);
 
-    // Get or create conversation
+    // record user message
     const convMap = histories.get(contextKey)!;
     if (!convMap.has(threadId)) convMap.set(threadId, { messages: new Map() });
-
-    // Record user message
     const conversation = convMap.get(threadId)!;
     conversation.messages.set(
       message.id,
@@ -351,6 +354,7 @@ export async function handleNewMessage(
     let replyToInfo = `${message.author.username} said: "${message.content}"`;
     if (interject) replyToInfo = `🔀 Random interjection — ${replyToInfo}`;
 
+    // generate and send reply
     const { text, mathBuffers } = await generateReply(
       conversation.messages,
       message.id,
@@ -361,27 +365,22 @@ export async function handleNewMessage(
       imageUrls,
       genericUrls
     );
+    const attachments = mathBuffers.map((buf, i) => ({
+      attachment: buf,
+      name: `math-${i}.png`,
+    }));
+    const out = text;
+    const sent = await message.reply({
+      content: message.guild ? replaceEmojiShortcodes(out, message.guild) : out,
+      files: attachments,
+    });
 
-    // send math images
-    for (let i = 0; i < mathBuffers.length; i++) {
-      await message.reply({
-        files: [{ attachment: mathBuffers[i], name: `math${i}.png` }],
-      });
-    }
-
-    // Format & send
-    const out = applyDiscordMarkdownFormatting(text);
-    const sent = await message.reply(
-      message.guild ? replaceEmojiShortcodes(out, message.guild) : out
-    );
-
-    // Record assistant reply
     conversation.messages.set(
       sent.id,
       createChatMessage(sent, "assistant", client.user?.username)
     );
 
-    // Persist memory & conversations
+    // persist memory & logs
     await updateUserMemory(userId, {
       timestamp: Date.now(),
       content: `Replied: ${out}`,
@@ -390,9 +389,11 @@ export async function handleNewMessage(
   };
 }
 
+/**
+ * Preload stored conversations for each guild on startup.
+ */
 export async function run(client: Client): Promise<void> {
   const guildIds = Array.from(client.guilds.cache.keys());
-  // Load stored conversations for each guild context
   await Promise.all(
     guildIds.map((g) => loadConversations(g, histories, idMaps))
   );
