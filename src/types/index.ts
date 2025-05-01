@@ -1,50 +1,57 @@
-// src/types/types.ts
-
 /**
- * src/types/types.ts
- *
- * Shared types for chat messages, conversation contexts, and memory entries.
+ * @file src/types/index.ts
+ * @description Central TypeScript type definitions for Discord messages, memory entries, and conversation context.
  */
 
 /**
- * Allowed roles for chat messages.
- */
-export type Role = "user" | "assistant";
-
-/**
- * A single entry for long-term memory (user or clone).
+ * Represents a single memory entry for storing user or clone recollections.
  */
 export interface GeneralMemoryEntry {
-  /** When this entry was recorded (ms since UNIX epoch). */
+  /** Unix timestamp (in milliseconds) when the entry was recorded. */
   timestamp: number;
-  /** The memory content or summary to be preserved. */
+  /** Text content of the memory entry. */
   content: string;
 }
 
 /**
- * Represents a single chat message in a conversation.
+ * Role of a chat message within a conversation thread.
+ */
+export type ChatRole = "user" | "assistant";
+
+/**
+ * Standardized chat message object used for AI conversation context.
  */
 export interface ChatMessage {
-  /** Discord message ID */
+  /** Unique message ID (Discord message ID). */
   id: string;
-  /** Origin of the message: user or assistant */
-  role: Role;
-  /** Sanitised display name (username or bot name) */
+  /** Role of the sender in the conversation. */
+  role: ChatRole;
+  /** Display name of the sender (username or bot name). */
   name: string;
-  /** Discord user ID (only for user-sent messages) */
+  /** Discord user ID of the sender; present for user messages. */
   userId?: string;
-  /** Raw text content of the message */
+  /** The cleaned content of the message, with markdown applied. */
   content: string;
-  /** Parent message ID if this message is a reply */
+  /** ID of the message this one is replying to, if any, to maintain threading. */
   replyToId?: string;
-  /** Any attachment URLs (images, GIFs, etc.) included with the message */
-  attachmentUrls?: string[];
 }
 
 /**
- * Holds the full message history for a given conversation thread.
+ * Context for an ongoing conversation thread, mapping message IDs to chat messages.
  */
 export interface ConversationContext {
-  /** Map from message ID to the corresponding ChatMessage */
+  /** Ordered map of message IDs to ChatMessage entries. */
   messages: Map<string, ChatMessage>;
+}
+
+/**
+ * Configuration record saved for each guild to manage cooldown behavior.
+ */
+export interface GuildCooldownConfig {
+  /** Flag indicating if cooldown is enabled for the guild. */
+  useCooldown: boolean;
+  /** Duration of each cooldown period, in seconds. */
+  cooldownTime: number;
+  /** Apply cooldown per user if true, otherwise globally. */
+  perUserCooldown: boolean;
 }

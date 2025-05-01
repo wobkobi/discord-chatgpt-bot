@@ -1,8 +1,6 @@
 /**
- * src/memory/userMemory.ts
- *
- * Manages per-user memory: conversation summaries and context,
- * kept in an in-memory cache and persisted to disk.
+ * @file src/memory/userMemory.ts
+ * @description Manages long-term memory entries for regular users, stored in-memory and persisted to disk.
  */
 
 import { GeneralMemoryEntry } from "@/types";
@@ -15,8 +13,10 @@ import logger from "../utils/logger.js";
 export const userMemory = new Map<string, GeneralMemoryEntry[]>();
 
 /**
- * Clears the in-memory cache for user memories.
- * Should be invoked at bot startup to reset state.
+ * Clears the entire user memory cache.
+ *
+ * @async
+ * @returns Promise that resolves when the cache has been cleared.
  */
 export async function initialiseUserMemory(): Promise<void> {
   userMemory.clear();
@@ -24,29 +24,29 @@ export async function initialiseUserMemory(): Promise<void> {
 }
 
 /**
- * Appends a new memory entry for the given user,
- * updates the in-memory cache, and persists all entries to disk.
+ * Appends a new memory entry for the specified user, updates the cache, and persists to disk.
  *
- * @param userId - The Discord user ID
- * @param entry  - The memory entry to store
+ * @async
+ * @param userId - Discord user ID for whom to store memory.
+ * @param entry - Memory entry object containing timestamp and content.
+ * @returns Promise that resolves when the memory is updated and saved.
  */
 export async function updateUserMemory(
   userId: string,
   entry: GeneralMemoryEntry
 ): Promise<void> {
   try {
-    // Load existing if present in cache, otherwise from disk
-    const existing = userMemory.has(userId)
-      ? userMemory.get(userId)!
-      : await loadUserMemory(userId);
+    // Load existing entries for user from disk
+    const existingEntries = await loadUserMemory(userId);
 
-    const updated = existing.concat(entry);
-    userMemory.set(userId, updated);
+    // Append the new entry to the in-memory cache
+    const updatedEntries = existingEntries.concat(entry);
+    userMemory.set(userId, updatedEntries);
 
-    // Persist to disk
-    await saveUserMemory(userId, updated);
+    // Persist updated entries to disk
+    await saveUserMemory(userId, updatedEntries);
     logger.debug(
-      `📥 User memory for ${userId} updated (now ${updated.length} entries)`
+      `📥 User memory for ${userId} updated (total ${updatedEntries.length} entries)`
     );
   } catch (err) {
     logger.error(

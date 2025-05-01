@@ -1,4 +1,7 @@
-// src/commands/ask.ts
+/**
+ * @file src/commands/ask.ts
+ * @description Slash command for querying the AI assistant via OpenAI, including persona and memory management.
+ */
 
 import {
   ChatInputCommandInteraction,
@@ -19,13 +22,23 @@ import logger from "../utils/logger.js";
 
 dotenv.config();
 
+/**
+ * Required OpenAI API key loaded from environment.
+ * @throws When OPENAI_KEY is not defined.
+ */
 const OPENAI_KEY = process.env.OPENAI_API_KEY!;
 if (!OPENAI_KEY) {
   throw new Error("OPENAI_API_KEY is required");
 }
 
+/**
+ * OpenAI client for generating chat completions.
+ */
 const openai = new OpenAI({ apiKey: OPENAI_KEY });
 
+/**
+ * Slash command registration data for /ask.
+ */
 export const data = new SlashCommandBuilder()
   .setName("ask")
   .setDescription("Ask the bot a question privately")
@@ -36,23 +49,36 @@ export const data = new SlashCommandBuilder()
       .setRequired(true)
   );
 
+/**
+ * Handles the /ask interaction by deferring the reply, validating user permissions,
+ * building the prompt (including persona and memory), querying OpenAI, and editing the reply.
+ *
+ * @param interaction - The ChatInputCommandInteraction context for the slash command.
+ * @throws When OpenAI returns no content or editing the reply fails.
+ */
 export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
   const userId = interaction.user.id;
   const question = interaction.options.getString("question", true).trim();
-  logger.info(`[ask] ${userId} → "${question}"`);
 
+  logger.info(`[ask] ${userId} → "${question}"`);
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  // Choose model
+  // Permission: only bot owner or clone user can invoke
+  if (userId !== process.env.OWNER_ID && userId !== cloneUserId) {
+    await interaction.editReply({
+      content: "🚫 You cannot ask me questions directly.",
+    });
+    return;
+  }
+
+  // Determine which model to use
   const useFT = process.env.USE_FINE_TUNED_MODEL === "true";
   const modelName = useFT ? process.env.FINE_TUNED_MODEL_NAME! : "gpt-4o";
 
-  // Build the prompt messages
+  // Build chat messages with persona and memory
   const messages: ChatCompletionMessageParam[] = [];
-
-  // 1) persona + memory
   if (process.env.USE_PERSONA === "true") {
     const persona = await getCharacterDescription(userId);
     messages.push({ role: "system", content: persona });
@@ -71,9 +97,8 @@ export async function execute(
     }
   }
 
-  // 2) the user’s question
+  // Add the user's question
   messages.push({ role: "user", content: question });
-
   logger.info(
     `[ask] Prompt → model=${modelName}, messages=\n${JSON.stringify(
       messages,

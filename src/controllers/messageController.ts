@@ -1,3 +1,9 @@
+/**
+ * @file src/controllers/messageController.ts
+ * @description Handles incoming Discord messages: applies cooldowns, manages conversation threads,
+ * updates memory, invokes AI reply generation, and persists conversation state.
+ */
+
 import { ConversationContext } from "@/types";
 import { Client, Message } from "discord.js";
 import OpenAI from "openai";
@@ -17,59 +23,58 @@ import {
   replaceEmojiShortcodes,
   summariseConversation,
 } from "../utils/discordHelpers.js";
-import {
-  loadConversations,
-  markContextUpdated,
-  saveConversations,
-} from "../utils/fileUtils.js";
+import { loadConversations, saveConversations } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
 
+/**
+ * Maximum number of messages before summarization occurs.
+ */
 const MESSAGE_LIMIT = 10;
+
+// In-memory maps storing conversation histories and ID mappings per context (guild or user)
 const histories = new Map<string, Map<string, ConversationContext>>();
 const idMaps = new Map<string, Map<string, string>>();
 
 /**
- * Returns a function that handles incoming Discord messages,
- * applies cooldowns, updates memory, generates replies, and sends them.
+ * Creates and returns a handler function for new Discord messages.
+ * Applies cooldowns, updates memory, threads conversations, and generates AI replies.
+ *
+ * @param openai - Initialized OpenAI client for chat completions.
+ * @param client - Discord Client instance for sending replies.
+ * @returns A function that processes a Message and may reply via the AI.
  */
 export async function handleNewMessage(
   openai: OpenAI,
   client: Client
 ): Promise<(message: Message) => Promise<void>> {
   return async (message: Message): Promise<void> => {
-    // ignore bots & mass mentions
+    // Ignore bot messages and unwanted mass mentions
     if (message.author.bot) return;
     if (message.guild && message.mentions.everyone) return;
 
-    // decide whether to respond
+    // Determine if bot was mentioned or should interject randomly
     const mentioned = message.guild
       ? message.mentions.has(client.user!.id)
       : true;
-
-    // decide whether to interject, but only if no bot has replied in the last 5 messages
     let interject = false;
     if (message.guild && !mentioned) {
-      // fetch the last 5 messages (excluding the one we just received)
       const fetched = await message.channel.messages.fetch({ limit: 6 });
-      // drop the current message, look at the previous 5
       const lastFive = Array.from(fetched.values())
         .sort((a, b) => b.createdTimestamp - a.createdTimestamp)
         .slice(1, 6);
-      // if none of those was from a bot, roll the dice
       const botInLastFive = lastFive.some((m) => m.author.bot);
       if (!botInLastFive && Math.random() < 1 / 50) {
         interject = true;
       }
     }
-
     if (message.guild && !mentioned && !interject) return;
 
-    // show typing
+    // Show typing indicator
     if (message.channel.isTextBased() && "sendTyping" in message.channel) {
       message.channel.sendTyping().catch(() => {});
     }
 
-    // update clone memory if applicable
+    // Update clone user memory if message is from the clone user
     const userId = message.author.id;
     const guildId = message.guild?.id || null;
     if (userId === cloneUserId) {
@@ -79,28 +84,24 @@ export async function handleNewMessage(
       });
     }
 
-    // cooldown enforcement
+    // Enforce cooldown
     const cdKey = getCooldownContext(guildId, userId);
     if (useCooldown && isCooldownActive(cdKey)) {
-      // pull the real cooldownTime (in seconds) for this guild/user
       const { cooldownTime } = getCooldownConfig(guildId);
-      const cd = cooldownTime.toFixed(2);
-      const warn = await message.reply(`⏳ Cooldown: ${cd}s`);
-
-      // delete the warning exactly when the cooldown window ends
+      const warn = await message.reply(
+        `⏳ Cooldown: ${cooldownTime.toFixed(2)}s`
+      );
       setTimeout(() => warn.delete().catch(() => {}), cooldownTime * 1000);
-
       return;
     }
     if (useCooldown) manageCooldown(guildId, userId);
 
-    // conversation threading setup
+    // Prepare conversation threading
     const contextKey = guildId || userId;
     if (!histories.has(contextKey)) {
       histories.set(contextKey, new Map());
       idMaps.set(contextKey, new Map());
     }
-    markContextUpdated(contextKey);
     const convIds = idMaps.get(contextKey)!;
     const replyToId = message.reference?.messageId;
     const threadId =
@@ -109,7 +110,7 @@ export async function handleNewMessage(
         : `${message.channel.id}-${message.id}`;
     convIds.set(message.id, threadId);
 
-    // record user message
+    // Record user message in conversation history
     const convMap = histories.get(contextKey)!;
     if (!convMap.has(threadId)) convMap.set(threadId, { messages: new Map() });
     const conversation = convMap.get(threadId)!;
@@ -118,7 +119,7 @@ export async function handleNewMessage(
       createChatMessage(message, "user", client.user?.username)
     );
 
-    // Fetch recent channel history
+    // Fetch recent channel history for context
     let channelHistory: string | undefined;
     if (message.guild) {
       try {
@@ -132,49 +133,32 @@ export async function handleNewMessage(
       }
     }
 
-    // Gather attachment images
+    // Extract image and other URLs for context
     const imageUrls: string[] = Array.from(message.attachments.values())
       .filter((a) => a.contentType?.startsWith("image/"))
       .map((a) => a.url);
-
-    // Inline static image URLs
-    const inlineImageUrls: string[] =
+    const inlineImageUrls =
       message.content.match(/https?:\/\/\S+\.(?:png|jpe?g|webp|gif)/gi) ?? [];
-    inlineImageUrls.forEach((url: string) => {
+    inlineImageUrls.forEach((url) => {
       if (!imageUrls.includes(url)) imageUrls.push(url);
     });
 
-    // Tenor → download.gif
-    const tenorLinks: string[] =
-      message.content.match(/https?:\/\/tenor\.com\/view\/[^\s]+/gi) ?? [];
-    tenorLinks.forEach((link: string) => {
-      const base = link.replace(/\/download(?:\.\w+)?$/, "");
-      const gifUrl = `${base}/download.gif`;
-      if (!imageUrls.includes(gifUrl)) imageUrls.push(gifUrl);
+    // Handle Tenor and Giphy links
+    const tenorUrls =
+      message.content.match(/https?:\/\/tenor\.com\/\S+/gi) ?? [];
+    tenorUrls.forEach((url) => {
+      if (!imageUrls.includes(url)) imageUrls.push(url);
+    });
+    const giphyUrls =
+      message.content.match(/https?:\/\/(?:media\.)?giphy\.com\/\S+/gi) ?? [];
+    giphyUrls.forEach((url) => {
+      if (!imageUrls.includes(url)) imageUrls.push(url);
     });
 
-    // Giphy → media.giphy.com
-    const giphyLinks: string[] =
-      message.content.match(/https?:\/\/giphy\.com\/gifs\/[^\s]+/gi) ?? [];
-    giphyLinks.forEach((link: string) => {
-      const id = link.split("/").pop();
-      if (id) {
-        const gifUrl = `https://media.giphy.com/media/${id}/giphy.gif`;
-        if (!imageUrls.includes(gifUrl)) imageUrls.push(gifUrl);
-      }
-    });
+    const allLinks = message.content.match(/https?:\/\/\S+/gi) ?? [];
+    const genericUrls = allLinks.filter((url) => !imageUrls.includes(url));
 
-    // All other URLs
-    const allLinks: string[] = message.content.match(/https?:\/\/\S+/gi) ?? [];
-    const genericUrls: string[] = allLinks.filter(
-      (url) =>
-        !imageUrls.includes(url) &&
-        !inlineImageUrls.includes(url) &&
-        !tenorLinks.includes(url) &&
-        !giphyLinks.includes(url)
-    );
-
-    // Summarise if too long
+    // Summarise conversation if too long
     if (conversation.messages.size >= MESSAGE_LIMIT) {
       const summary = summariseConversation(conversation);
       await updateUserMemory(userId, {
@@ -184,11 +168,11 @@ export async function handleNewMessage(
       conversation.messages.clear();
     }
 
-    // Build replyToInfo tag (mark interjection)
+    // Build replyToInfo tag (include interjection flag)
     let replyToInfo = `${message.author.username} said: "${message.content}"`;
     if (interject) replyToInfo = `🔀 Random interjection — ${replyToInfo}`;
 
-    // generate and send reply
+    // Generate and send AI reply
     const { text, mathBuffers } = await generateReply(
       conversation.messages,
       message.id,
@@ -203,28 +187,28 @@ export async function handleNewMessage(
       attachment: buf,
       name: `math-${i}.png`,
     }));
-    const out = text;
-    const sent = await message.reply({
-      content: message.guild ? replaceEmojiShortcodes(out, message.guild) : out,
-      files: attachments,
-    });
+    const out = message.guild
+      ? replaceEmojiShortcodes(text, message.guild)
+      : text;
+    const sent = await message.reply({ content: out, files: attachments });
 
+    // Record assistant reply and persist
     conversation.messages.set(
       sent.id,
       createChatMessage(sent, "assistant", client.user?.username)
     );
-
-    // persist memory & logs
     await updateUserMemory(userId, {
       timestamp: Date.now(),
-      content: `Replied: ${out}`,
+      content: `Replied: ${text}`,
     });
     await saveConversations(histories, idMaps);
   };
 }
 
 /**
- * Preload stored conversations for each guild on startup.
+ * Preloads stored conversations for each guild on bot startup.
+ *
+ * @param client - Discord Client instance to enumerate guilds.
  */
 export async function run(client: Client): Promise<void> {
   const guildIds = Array.from(client.guilds.cache.keys());

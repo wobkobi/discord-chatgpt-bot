@@ -1,8 +1,6 @@
 /**
- * src/memory/cloneMemory.ts
- *
- * Manages the “clone” memory store: logs of interactions
- * specifically for the cloned user persona, persisted to disk.
+ * @file src/memory/cloneMemory.ts
+ * @description Manages the clone memory store: logs of interactions specifically for the cloned user persona, persisted to disk.
  */
 
 import { GeneralMemoryEntry } from "@/types";
@@ -15,8 +13,10 @@ import logger from "../utils/logger.js";
 export const cloneMemory = new Map<string, GeneralMemoryEntry[]>();
 
 /**
- * Clears the in-memory cache for clone memories.
- * Should be called at bot startup to reset state.
+ * Clears the in-memory clone memory cache.
+ *
+ * @async
+ * @returns Promise that resolves when the cache is cleared.
  */
 export async function initialiseCloneMemory(): Promise<void> {
   cloneMemory.clear();
@@ -24,27 +24,26 @@ export async function initialiseCloneMemory(): Promise<void> {
 }
 
 /**
- * Appends a new memory entry for the given user,
- * updates the in-memory cache, and persists to disk.
+ * Appends a new memory entry for the specified clone user, updates the cache, and persists to disk.
  *
- * @param userId - The Discord user ID of the clone persona
- * @param entry  - The memory entry to store
+ * @async
+ * @param userId - Discord user ID of the clone persona.
+ * @param entry - Memory entry to append.
+ * @returns Promise that resolves when the memory is updated.
  */
 export async function updateCloneMemory(
   userId: string,
   entry: GeneralMemoryEntry
 ): Promise<void> {
   try {
-    // Load existing entries from cache or disk
-    const existingEntries = cloneMemory.has(userId)
-      ? cloneMemory.get(userId)!
-      : await loadCloneMemory(userId);
+    // Load existing entries from disk
+    const existingEntries = await loadCloneMemory(userId);
 
-    // Append the new entry
+    // Append the new entry to the cache
     const updatedEntries = existingEntries.concat(entry);
     cloneMemory.set(userId, updatedEntries);
 
-    // Persist updated list
+    // Persist updated entries to disk
     await saveCloneMemory(userId, updatedEntries);
     logger.debug(
       `📥 Clone memory for user ${userId} updated (total ${updatedEntries.length} entries)`
