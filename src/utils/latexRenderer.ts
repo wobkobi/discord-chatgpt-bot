@@ -1,3 +1,9 @@
+/**
+ * @file src/utils/latexRenderer.ts
+ * @description Provides utilities to render LaTeX expressions to SVG, PNG, and JPG formats using MathJax and Sharp,
+ *              with deterministic caching based on content hashes.
+ */
+
 import { createHash } from "crypto";
 import { promises as fs } from "fs";
 import { liteAdaptor } from "mathjax-full/js/adaptors/liteAdaptor.js";
@@ -13,57 +19,71 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Set up MathJax for server-side SVG generation
+// Initialize MathJax for server-side SVG generation
 const adaptor = liteAdaptor();
 RegisterHTMLHandler(adaptor);
 const tex = new TeX();
 const svgJax = new SVG({ fontCache: "none" });
 const html = mathjax.document("", { InputJax: tex, OutputJax: svgJax });
 
-// Output directory inside container
+// Directory where rendered outputs are stored
 const OUTPUT_DIR = path.resolve(__dirname, "../../data/output");
 
-// Ensure output directory exists
-async function ensureOutputDir() {
+/**
+ * Ensure the output directory exists, creating it recursively if necessary.
+ */
+async function ensureOutputDir(): Promise<void> {
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
 }
+// Initialize output directory on module load
 ensureOutputDir().catch(console.error);
 
 /**
- * Compute a deterministic cache key for a LaTeX input.
+ * Compute a deterministic cache key for a given LaTeX input by hashing.
+ *
+ * @param latex - The raw LaTeX string to hash.
+ * @returns A 16-character hex string derived from the SHA-256 hash of the input.
  */
 function computeKey(latex: string): string {
   return createHash("sha256").update(latex).digest("hex").slice(0, 16);
 }
 
 /**
- * Convert LaTeX to SVG markup string.
- * Extract only the <svg>…</svg> fragment.
+ * Render a LaTeX string to an SVG markup fragment.
+ * Extracts only the <svg>…</svg> portion from the full MathJax output.
+ *
+ * @param latex - The LaTeX expression to convert.
+ * @throws When the MathJax output does not contain valid SVG tags.
+ * @returns A string containing the SVG XML markup.
  */
 function renderLatexToSvgString(latex: string): string {
   const full = html.convert(latex, { display: true });
   const markup = adaptor.outerHTML(full);
   const start = markup.indexOf("<svg");
   const end = markup.lastIndexOf("</svg>");
-  if (start < 0 || end < 0) throw new Error("Invalid SVG from MathJax");
+  if (start < 0 || end < 0) {
+    throw new Error("Invalid SVG output from MathJax");
+  }
   return markup.slice(start, end + "</svg>".length);
 }
 
 /**
- * Render LaTeX to SVG file, with caching by content hash.
- * @param latexInput Raw LaTeX string
- * @returns Absolute path to generated or cached SVG
+ * Render LaTeX to an SVG file on disk, using cached version if available.
+ *
+ * @param latexInput - Raw LaTeX string to render.
+ * @returns Absolute path to the generated or cached SVG file.
  */
 export async function renderMathToSvg(latexInput: string): Promise<string> {
   const key = computeKey(latexInput);
   const outName = `math-${key}.svg`;
   const outPath = path.join(OUTPUT_DIR, outName);
-  // reuse if exists
   try {
     const stat = await fs.stat(outPath);
-    if (stat.isFile()) return outPath;
+    if (stat.isFile()) {
+      return outPath;
+    }
   } catch {
-    // not exists, will generate
+    // File does not exist; proceed to generate
   }
   const svgString = renderLatexToSvgString(latexInput);
   await fs.writeFile(outPath, svgString, "utf8");
@@ -71,8 +91,10 @@ export async function renderMathToSvg(latexInput: string): Promise<string> {
 }
 
 /**
- * Render LaTeX to PNG buffer and cached file.
- * @param latexInput Raw LaTeX string
+ * Render LaTeX to a PNG buffer and save it on disk, reusing cache when possible.
+ *
+ * @param latexInput - Raw LaTeX string to render.
+ * @returns An object containing the PNG buffer and its file path.
  */
 export async function renderMathToPng(
   latexInput: string
@@ -81,12 +103,11 @@ export async function renderMathToPng(
   const key = path.basename(svgPath, ".svg");
   const outName = `math-${key}.png`;
   const outPath = path.join(OUTPUT_DIR, outName);
-  // reuse if exists
   let buffer: Buffer;
   try {
     buffer = await fs.readFile(outPath);
   } catch {
-    // generate new
+    // Generate PNG from SVG
     buffer = await sharp(svgPath, { density: 300 })
       .flatten({ background: "#fff" })
       .extend({ top: 20, bottom: 20, left: 20, right: 20, background: "#fff" })
@@ -98,8 +119,10 @@ export async function renderMathToPng(
 }
 
 /**
- * Render LaTeX to JPEG buffer and cached file.
- * @param latexInput Raw LaTeX string
+ * Render LaTeX to a JPEG buffer and save it on disk, reusing cache when possible.
+ *
+ * @param latexInput - Raw LaTeX string to render.
+ * @returns An object containing the JPEG buffer and its file path.
  */
 export async function renderMathToJpg(
   latexInput: string
@@ -112,8 +135,10 @@ export async function renderMathToJpg(
   try {
     buffer = await fs.readFile(outPath);
   } catch {
+    // Generate JPEG from SVG
     buffer = await sharp(svgPath)
       .flatten({ background: "#fff" })
+      .extend({ top: 20, bottom: 20, left: 20, right: 20, background: "#fff" })
       .jpeg({ quality: 95 })
       .toBuffer();
     await fs.writeFile(outPath, buffer);

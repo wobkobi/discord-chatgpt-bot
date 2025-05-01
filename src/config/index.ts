@@ -1,29 +1,41 @@
-// src/config.ts
+/**
+ * @file src/config/index.ts
+ * @description Defines and persists per-guild cooldown configuration for the bot.
+ */
 
 import fs from "fs/promises";
 import { join } from "path";
-import logger from "./utils/logger.js";
+import logger from "../utils/logger.js";
 
 /**
  * Configuration options for per-guild cooldown behavior.
  */
 export interface GuildCooldownConfig {
+  /** Whether cooldown logic is enabled for this guild. */
   useCooldown: boolean;
+  /** Duration of the cooldown period, in seconds. */
   cooldownTime: number;
+  /** If true, applies cooldown separately per user instead of globally. */
   perUserCooldown: boolean;
 }
 
-/** Fallback settings used when no guild-specific config is found. */
+/**
+ * Default settings used when no guild-specific config is found.
+ */
 export const defaultCooldownConfig: GuildCooldownConfig = {
   useCooldown: true,
-  cooldownTime: 1.25,
+  cooldownTime: 2.5,
   perUserCooldown: true,
 };
 
-/** In-memory cache of guild-specific cooldown configurations. */
+/**
+ * In-memory cache of guild-specific cooldown configurations.
+ */
 export const guildCooldownConfigs = new Map<string, GuildCooldownConfig>();
 
-/** File path for persisting guild cooldown configurations. */
+/**
+ * Absolute path to the JSON file persisting guild cooldown settings.
+ */
 const CONFIG_FILE_PATH = join(
   process.cwd(),
   "data",
@@ -31,16 +43,16 @@ const CONFIG_FILE_PATH = join(
 );
 
 /**
- * Load guild cooldown configurations from disk into memory.
- * If the file is missing or malformed, logs a warning and proceeds with defaults.
+ * Load persisted guild cooldown configurations from disk into memory.
+ * If the file is missing or malformed, logs a warning and continues with defaults.
+ *
+ * @async
+ * @returns A promise that resolves when loading is complete.
  */
 export async function loadGuildCooldownConfigs(): Promise<void> {
   try {
-    const fileContents = await fs.readFile(CONFIG_FILE_PATH, "utf-8");
-    const parsed = JSON.parse(fileContents) as Record<
-      string,
-      GuildCooldownConfig
-    >;
+    const file = await fs.readFile(CONFIG_FILE_PATH, "utf-8");
+    const parsed: Record<string, GuildCooldownConfig> = JSON.parse(file);
     for (const [guildId, config] of Object.entries(parsed)) {
       guildCooldownConfigs.set(guildId, config);
     }
@@ -57,6 +69,9 @@ export async function loadGuildCooldownConfigs(): Promise<void> {
 /**
  * Persist the current in-memory guild cooldown configurations to disk.
  * Creates the data directory if it does not exist.
+ *
+ * @async
+ * @returns A promise that resolves when save is complete.
  */
 export async function saveGuildCooldownConfigs(): Promise<void> {
   try {

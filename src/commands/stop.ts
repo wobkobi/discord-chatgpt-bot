@@ -1,12 +1,29 @@
-// src/commands/stop.ts
+/**
+ * @file src/commands/stop.ts
+ * @description Slash command to safely shut down the bot (owner only).
+ */
 
-import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import {
+  ChatInputCommandInteraction,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "discord.js";
 import logger from "../utils/logger.js";
 
+/**
+ * Registration data for the /stop slash command.
+ */
 export const data = new SlashCommandBuilder()
   .setName("stop")
   .setDescription("Safely stop the bot (Owner only)");
 
+/**
+ * Handles the /stop command by validating the invoking user as owner,
+ * sending a shutdown confirmation, and cleanly destroying the client.
+ *
+ * @param interaction - The ChatInputCommandInteraction context.
+ * @throws When client destruction or process exit fails unexpectedly.
+ */
 export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
@@ -14,7 +31,7 @@ export async function execute(
   if (!ownerId) {
     await interaction.reply({
       content: "⚠️ Bot owner is not configured.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -22,20 +39,19 @@ export async function execute(
   if (interaction.user.id !== ownerId) {
     await interaction.reply({
       content: "🚫 You are not allowed to shut me down.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
   await interaction.reply({
     content: "🛑 Shutting down. Goodbye!",
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 
-  // give Discord a moment to send the reply
+  // Allow Discord to send the reply before destroying the client
   setTimeout(async () => {
     try {
-      // cleanly destroy the client to close connections
       await interaction.client.destroy();
       logger.info("Discord client destroyed, exiting process.");
     } catch (err) {
