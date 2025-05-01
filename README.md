@@ -1,9 +1,9 @@
 # Discord ChatGPT Bot
 
 A Discord bot built with Discord.js and OpenAI’s ChatGPT integration.  
-Features conversation memory, persona/clone modes, dynamic emoji replacement, cooldowns, LaTeX math rendering, robust logging, and multimodal vision support.
+Features conversation memory (for persona **and** fine‑tuned modes), dynamic emoji replacement, cooldowns, LaTeX math rendering, robust logging, and multimodal vision support.
 
-All code lives under `src/`, organized into Controllers, Services, Store, Utils, Commands, and Config.
+All code lives under `src/`, organized into Commands, Config, Controllers, Services, Store, Utils, and the entry `index.ts`.
 
 ---
 
@@ -12,35 +12,35 @@ All code lives under `src/`, organized into Controllers, Services, Store, Utils,
 ```txt
 src/
 ├─ commands/                # Slash-command modules
-│   ├─ ask.ts
-│   ├─ checkCredits.ts
-│   ├─ setCooldown.ts
-│   └─ stop.ts
+│   ├─ ask.ts                # Query the bot (anyone can use)
+│   ├─ checkCredits.ts       # Show remaining OpenAI quota
+│   ├─ setCooldown.ts        # (Owner) Adjust guild/user cooldowns
+│   └─ stop.ts               # (Owner) Gracefully shut down
 │
 ├─ config/                  # Static JSON & environment config
-│   ├─ persona.json
-│   └─ index.ts
+│   ├─ persona.json         # Base persona, clone ID, markdown guide
+│   └─ index.ts             # Default cooldown settings
 │
 ├─ controllers/             # Discord event handlers
-│   ├─ messageController.ts
-│   └─ interactionController.ts
+│   ├─ messageController.ts # Handles incoming messages & AI replies
+│   └─ interactionController.ts # Dispatches slash commands
 │
-├─ services/                # Core logic (AI prompts, LaTeX → image, memory)
-│   ├─ replyService.ts
-│   ├─ latexRenderer.ts
-│   └─ characterService.ts
+├─ services/                # Core logic
+│   ├─ replyService.ts      # Builds prompts, injects persona & memory, calls OpenAI
+│   ├─ latexRenderer.ts     # Renders `\[ … \]` LaTeX → SVG/PNG/JPG
+│   └─ characterService.ts  # Constructs persona prompt & recent style snippet
 │
 ├─ store/                   # In-memory + persisted state
-│   ├─ cloneMemory.ts
-│   └─ userMemory.ts
+│   ├─ cloneMemory.ts       # Clone-user memory store
+│   └─ userMemory.ts        # General user memory store
 │
-├─ utils/                   # Generic helpers
-│   ├─ discordHelpers.ts
-│   ├─ cooldown.ts
-│   ├─ fileUtils.ts
+├─ utils/                   # Helpers
+│   ├─ discordHelpers.ts    # Mentions, markdown, emoji, summarisation
+│   ├─ cooldown.ts          # Per-guild/user rate-limiting
+│   ├─ fileUtils.ts         # Encrypted persistence for memory & threads
 │   └─ logger.ts            # Winston logger with daily rotation
 │
-└─ index.ts                 # Entry point: loads controllers, starts bot
+└─ index.ts                 # Entry: load commands, init memory, start bot
 ```
 
 ---
@@ -48,36 +48,38 @@ src/
 ## 🚀 Features
 
 - **Persistent Conversation Context**  
-  Thread-aware; auto-summarises every 10 messages into long-term memory.
+  Thread‑aware; after every 10 messages the thread auto‑summarises into long‑term memory.
+
+- **Universal `/ask` Command**  
+  Anyone can ask the bot via `/ask`.  
+  Supports both persona mode **and** fine‑tuned models, with memory injected for either.
 
 - **Persona & Clone Memory**  
   Toggle via `USE_PERSONA` in `.env`.  
-  Special `cloneUserId` whose style is learned from recent messages.
+  A special `cloneUserId` whose recent style is captured and injected.
+
+- **Fine‑Tuned Model Memory**  
+  When `USE_FINE_TUNED_MODEL=true`, memory is still injected even if persona is disabled.
 
 - **Shared Markdown Guide**  
-  Injects a complete Discord-Markdown cheat-sheet into every system prompt.
+  Every prompt includes the same Discord‑Markdown cheat‑sheet for consistency.
 
 - **Cooldown Management**  
-  `/setCooldown` to adjust per-guild or per-user cooldowns.
-
-- **Slash Commands**
-
-  - `/ask` – Ask the bot a question via DM.
-  - `/checkCredits` – Show remaining OpenAI quota.
-  - `/setCooldown` – (Owner only) Change cooldown.
-  - `/stop` – (Owner only) Gracefully shut down.
+  `/setCooldown` to adjust per‑guild or per‑user cooldown durations.
 
 - **Dynamic Emoji Replacement**  
-  Replaces `:emoji_name:` with your server’s custom emoji tags.
+  Resolves `:emoji_name:` to your server’s custom emoji tags.
 
 - **Math Rendering**  
-  Renders `\[ … \]` LaTeX blocks to PNG (white background + border).
+  Renders `\[ … \]` LaTeX blocks to PNGs (white background + padding).
 
 - **Multimodal Vision**  
-  For image attachments, passes `[image_url]` blocks into gpt-4o.
+  Passes inline and attachment image URLs (including Tenor & Giphy) into GPT-4o.
 
 - **Robust Logging**  
-  Console + daily-rotating file logs (error-specific and combined), with an audible bell on errors. Logs output to `logs/` (including `latest.log` symlinks). Controlled via `LOG_LEVEL`.
+  Console + daily‑rotating files (separate error and combined logs), with an audible bell on errors.  
+  Logs live in `logs/` with `latest.log` symlinks.  
+  Controlled via `LOG_LEVEL`.
 
 ---
 
@@ -96,33 +98,35 @@ npm install
 Copy and edit `.env.example` to `.env`:
 
 ```dotenv
-# Discord credentials
-BOT_TOKEN=your_discord_bot_token
-CLIENT_ID=your_discord_application_client_id
-OWNER_ID=your_discord_user_id
+# Discord & OpenAI Credentials
+BOT_TOKEN=your_discord_bot_token_here
+CLIENT_ID=your_discord_application_client_id_here
+OWNER_ID=your_discord_user_id_here
+OPENAI_API_KEY=your_openai_api_key_here
 
-# OpenAI
-OPENAI_API_KEY=your_openai_api_key
-USE_FINE_TUNED_MODEL=false
-FINE_TUNED_MODEL_NAME=ft-model-name
+# Feature Toggles
+USE_PERSONA=true                    # inject persona & memory into prompts
+USE_FINE_TUNED_MODEL=false          # switch to a fine-tuned GPT model
+FINE_TUNED_MODEL_NAME=ft-model-name # name of your fine-tuned model
 
-# Persona toggle
+# Persona
 USE_PERSONA=true
 
 # Logging
 LOG_LEVEL=info
 
-# Encryption (for on-disk memory)
+# Encryption key for memory storage (AES-256-GCM)
 ENCRYPTION_KEY=your_aes_256_gcm_key_base64_or_raw
 ```
 
-In `src/config/persona.json`, define your persona:
+Define your persona in `src/config/persona.json`:
 
 ````json
 {
   "cloneUserId": "123456789012345678",
   "baseDescription": "You are a helpful AI assistant…",
-  "markdownGuide": "```md\n…Discord Markdown Guide…```"
+  "markdownGuide": "```md
+…Discord Markdown Guide…```"
 }
 ````
 
@@ -130,14 +134,14 @@ In `src/config/persona.json`, define your persona:
 
 ## ▶️ Scripts
 
-Scripts are defined in `package.json`:
+Defined in `package.json`:
 
 ```bash
-npm run build              # Compile TypeScript to JS
-npm run build:changelog    # Generate CHANGELOG from commands via @discordx/changelog
-npm run dev                # Run in dev mode (ts-node with hot-reload)
-npm run watch              # Alias for dev with nodemon watching
-npm run start              # tsc && node build/index.js
+npm run build             # Compile TypeScript to JS
+npm run build:changelog   # Generate command CHANGELOG
+npm run dev               # Dev mode (ts-node + nodemon hot-reload)
+npm run watch             # Alias: npm run dev
+npm run start             # tsc && node build/index.js
 ```
 
 ---
@@ -147,29 +151,30 @@ npm run start              # tsc && node build/index.js
 1. **Startup**
 
    - Load slash commands from `src/commands`.
-   - Register them via Discord REST.
-   - Initialise memory caches (`userMemory` & `cloneMemory`).
-   - Ensure log directories and start Winston logger.
-   - Set `botReady` before processing messages.
+   - Register globally via Discord REST.
+   - Initialise `userMemory` & `cloneMemory`.
+   - Ensure log folders; start Winston logger.
+   - Set `botReady` before handling messages.
 
 2. **Message Handling** (`controllers/messageController.ts`)
 
-   - Ignore bots, `@everyone`, or before ready.
+   - Ignore bot authors, `@everyone`, or if not ready.
    - Show typing indicator.
-   - Apply cooldowns (global or per-user).
-   - Thread messages and summarise past 10 into memory.
+   - Enforce cooldown (global or per-user).
+   - Thread & store messages; summarise each 10 into memory.
    - Extract image URLs (attachments, inline, Tenor, Giphy).
    - Build prompt via `services/replyService.ts`:
-     1. Persona + memory
-     2. Markdown guide
-     3. Thread history + URLs
-   - Send ChatCompletion to gpt-4o.
-   - Render `\[ … \]` math via `utils/latexRenderer.ts`.
+     1. Persona (if enabled)
+     2. Memory (for persona **or** fine‑tuned)
+     3. Markdown guide
+     4. Thread history + URLs
+   - Send single OpenAI ChatCompletion.
+   - Render any `\[ … \]` math via `utils/latexRenderer.ts`.
    - Reply once with text + math attachments.
 
-3. **Slash Commands**
-   - Dispatched in `controllers/interactionController.ts`.
-   - Each module in `src/commands/` exports `data` + `execute()`.
+3. **Slash Commands** (`controllers/interactionController.ts`)
+   - Each file in `src/commands` exports `data` and `execute()`.
+   - Commands: `/ask`, `/checkCredits`, `/setCooldown`, `/stop`.
 
 ---
 
@@ -178,7 +183,7 @@ npm run start              # tsc && node build/index.js
 - **Node.js** ≥ 16.0.0
 - **npm** ≥ 7.0.0
 
-Set via `package.json` `"engines"` field.
+Configured in `package.json` **engines**.
 
 ---
 
@@ -186,10 +191,10 @@ Set via `package.json` `"engines"` field.
 
 PRs welcome! Please:
 
-- Add slash commands under `src/commands`.
-- Add services under `src/services`.
-- Keep controllers focused on event routing.
-- Run `npm run build:changelog` when adding new commands.
+- Add new commands under `src/commands`.
+- Add services in `src/services`.
+- Keep controllers focused on routing.
+- Run `npm run build:changelog` after adding commands.
 
 ---
 

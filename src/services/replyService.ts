@@ -44,26 +44,31 @@ export async function generateReply(
   imageUrls: string[] = [],
   genericUrls: string[] = []
 ): Promise<{ text: string; mathBuffers: Buffer[] }> {
-  // Select model (fine-tuned or default)
+  // Determine feature toggles
   const useFT = process.env.USE_FINE_TUNED_MODEL === "true";
+  const usePersona = process.env.USE_PERSONA === "true";
+
+  // Select model (fine-tuned or default)
   const modelName = useFT
-    ? process.env.FINE_TUNED_MODEL_NAME! ||
-      (logger.error("FINE_TUNED_MODEL_NAME missing, exiting."),
-      process.exit(1),
-      "")
+    ? process.env.FINE_TUNED_MODEL_NAME! // assumes defined if useFT
     : "gpt-4o";
 
   // Build system and user messages for the chat completion
   const messages: ChatCompletionMessageParam[] = [];
-  if (process.env.USE_PERSONA === "true") {
-    // Persona and long-term or clone memory
+
+  // 1) Persona injection if enabled
+  if (usePersona) {
     const persona = await getCharacterDescription(userId);
     messages.push({ role: "system", content: persona });
+  }
+
+  // 2) Memory injection if persona OR fine-tuned mode is active
+  if (usePersona || useFT) {
     const memArr =
       userId === cloneUserId
         ? cloneMemory.get(userId) || []
         : userMemory.get(userId) || [];
-    if (memArr.length > 0) {
+    if (memArr.length) {
       const prefix =
         userId === cloneUserId ? "Clone memory:\n" : "Long-term memory:\n";
       messages.push({
@@ -72,17 +77,19 @@ export async function generateReply(
       });
     }
   }
-  // Optional trigger info and recent channel history
+
+  // 3) Optional trigger info and recent channel history
   if (replyToInfo) messages.push({ role: "system", content: replyToInfo });
   if (channelHistory)
     messages.push({
       role: "system",
       content: `Recent channel history:\n${channelHistory}`,
     });
-  // Markdown formatting guide
+
+  // 4) Markdown formatting guide
   messages.push({ role: "system", content: markdownGuide });
 
-  // Flatten thread history into user message
+  // 5) Flatten thread history into user message
   const lines: string[] = [];
   let cursor: string | undefined = currentId;
   while (cursor) {
@@ -94,7 +101,7 @@ export async function generateReply(
     );
     cursor = turn.replyToId;
   }
-  // Append URLs
+  // Append URLs at end
   for (const url of imageUrls) lines.push(`[image] ${url}`);
   for (const url of genericUrls) lines.push(`[link]  ${url}`);
   messages.push({ role: "user", content: lines.join("\n") });

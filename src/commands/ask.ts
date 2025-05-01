@@ -1,6 +1,6 @@
 /**
  * @file src/commands/ask.ts
- * @description Slash command for querying the AI assistant via OpenAI, including persona and memory management.
+ * @description Slash command for querying the AI assistant via OpenAI, with optional persona and memory integration.
  */
 
 import {
@@ -24,12 +24,10 @@ dotenv.config();
 
 /**
  * Required OpenAI API key loaded from environment.
- * @throws When OPENAI_KEY is not defined.
+ * @throws When OPENAI_API_KEY is not defined.
  */
 const OPENAI_KEY = process.env.OPENAI_API_KEY!;
-if (!OPENAI_KEY) {
-  throw new Error("OPENAI_API_KEY is required");
-}
+if (!OPENAI_KEY) throw new Error("OPENAI_API_KEY is required");
 
 /**
  * OpenAI client for generating chat completions.
@@ -50,11 +48,10 @@ export const data = new SlashCommandBuilder()
   );
 
 /**
- * Handles the /ask interaction by deferring the reply, validating user permissions,
- * building the prompt (including persona and memory), querying OpenAI, and editing the reply.
+ * Executes the /ask command.
+ * Builds and sends a prompt including optional persona and memory for fine-tuned or persona modes.
  *
- * @param interaction - The ChatInputCommandInteraction context for the slash command.
- * @throws When OpenAI returns no content or editing the reply fails.
+ * @param interaction - The ChatInputCommandInteraction context.
  */
 export async function execute(
   interaction: ChatInputCommandInteraction
@@ -62,27 +59,23 @@ export async function execute(
   const userId = interaction.user.id;
   const question = interaction.options.getString("question", true).trim();
 
-  logger.info(`[ask] ${userId} → "${question}"`);
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  // Permission: only bot owner or clone user can invoke
-  if (userId !== process.env.OWNER_ID && userId !== cloneUserId) {
-    await interaction.editReply({
-      content: "🚫 You cannot ask me questions directly.",
-    });
-    return;
-  }
-
-  // Determine which model to use
+  // Determine model & feature toggles
   const useFT = process.env.USE_FINE_TUNED_MODEL === "true";
+  const usePersona = process.env.USE_PERSONA === "true";
   const modelName = useFT ? process.env.FINE_TUNED_MODEL_NAME! : "gpt-4o";
 
-  // Build chat messages with persona and memory
   const messages: ChatCompletionMessageParam[] = [];
-  if (process.env.USE_PERSONA === "true") {
+
+  // 1) Persona prompt if enabled
+  if (usePersona) {
     const persona = await getCharacterDescription(userId);
     messages.push({ role: "system", content: persona });
+  }
 
+  // 2) Memory injection if persona OR fine-tuned
+  if (usePersona || useFT) {
     const memArr =
       userId === cloneUserId
         ? cloneMemory.get(userId) || []
@@ -97,7 +90,7 @@ export async function execute(
     }
   }
 
-  // Add the user's question
+  // 3) User question
   messages.push({ role: "user", content: question });
   logger.info(
     `[ask] Prompt → model=${modelName}, messages=\n${JSON.stringify(
