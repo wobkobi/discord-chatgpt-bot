@@ -8,13 +8,12 @@
   "scripts": {
     "build": "tsc",
     "build:changelog": "npx @discordx/changelog --src src",
-    "dev": "nodemon --watch src --ext ts --exec \"node --loader ts-node/esm/transpile-only src/index.ts\"",
+    "dev": "nodemon",
     "start": "tsc && node build/index.js",
     "watch": "nodemon --exec npm run dev --watch src --ext ts"
   },
   "dependencies": {
     "@discordjs/rest": "^2.4.3",
-    "axios": "^1.8.4",
     "discord-api-types": "^0.38.1",
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.7",
@@ -48,6 +47,15 @@
   "engines": {
     "node": ">=16.0.0",
     "npm": ">=7.0.0"
+  },
+  "nodemonConfig": {
+    "watch": [
+      "src"
+    ],
+    "ext": "ts",
+    "execMap": {
+      "ts": "node --loader ts-node/esm/transpile-only src/index.ts"
+    }
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": "eslint --cache --fix",
