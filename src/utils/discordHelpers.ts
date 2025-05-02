@@ -49,7 +49,7 @@ export function replaceEmojiShortcodes(text: string, guild: Guild): string {
 }
 
 /**
- * Construct a standardized ChatMessage object from a Discord Message.
+ * Construct a standardised ChatMessage object from a Discord Message.
  *
  * @param message - The original Discord message.
  * @param role - Role of the sender in conversation ('user' or 'assistant').
@@ -65,6 +65,13 @@ export function createChatMessage(
     role === "user"
       ? message.author.username.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64)
       : (botName ?? "Bot");
+
+  const attachmentUrls =
+    message.attachments.size > 0
+      ? Array.from(message.attachments.values())
+          .filter((a) => a.contentType?.startsWith("image/"))
+          .map((a) => a.url)
+      : undefined;
   return {
     id: message.id,
     role,
@@ -72,6 +79,7 @@ export function createChatMessage(
     userId: role === "user" ? message.author.id : undefined,
     content: message.content,
     replyToId: message.reference?.messageId,
+    attachmentUrls,
   };
 }
 
@@ -86,4 +94,16 @@ export function summariseConversation(context: ConversationContext): string {
     .slice(-3)
     .map((m) => m.content)
     .join("\n");
+}
+
+/**
+ * Helper to strip off query‐strings so we can compare URLs by origin+pathname.
+ */
+export function stripQuery(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch {
+    return url;
+  }
 }

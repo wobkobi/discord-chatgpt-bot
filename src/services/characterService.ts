@@ -75,9 +75,6 @@ export async function getCharacterDescription(
   const now = DateTime.now().toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS);
   description += `\n\n_Current time: ${now}_`;
 
-  // Add the markdown guide at the end
-  description += `\n\n${markdownGuide}`;
-
   // Escape any TeX sequences for Discord
   return fixMathFormatting(description);
 }

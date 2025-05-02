@@ -32,6 +32,8 @@ export interface ChatMessage {
   userId?: string;
   /** The cleaned content of the message, with markdown applied. */
   content: string;
+  /** Any attachment URLs (images, GIFs, etc.) included with the message */
+  attachmentUrls?: string[];
   /** ID of the message this one is replying to, if any, to maintain threading. */
   replyToId?: string;
 }
@@ -55,3 +57,8 @@ export interface GuildCooldownConfig {
   /** Apply cooldown per user if true, otherwise globally. */
   perUserCooldown: boolean;
 }
+
+export type Block =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "file"; file: { filename: string; file_data: string } };
