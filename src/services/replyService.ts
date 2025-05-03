@@ -131,9 +131,12 @@ export async function generateReply(
     const res = await openai.chat.completions.create({
       model: modelName,
       messages,
-      top_p: 0.6,
-      frequency_penalty: 0.5,
-      max_tokens: 2000,
+      temperature: 0.7,
+      top_p: 0.8,
+      frequency_penalty: 0.3,
+      presence_penalty: 0.1,
+      max_tokens: 512,
+      user: userId,
     });
     aiContent = res.choices[0]?.message.content?.trim() || "";
     if (!aiContent) throw new Error("Empty AI response");
