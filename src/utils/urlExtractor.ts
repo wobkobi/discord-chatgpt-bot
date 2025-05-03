@@ -36,11 +36,18 @@ interface TenorPostsResponse {
  * @returns True if the host is trusted for direct image linking.
  */
 function isTrustedImageHost(url: string): boolean {
-  return (
-    url.startsWith("https://cdn.discordapp.com") ||
-    url.includes("media.tenor.com") ||
-    url.includes("media.giphy.com")
-  );
+  try {
+    const parsedUrl = new URL(url);
+    const trustedHosts = [
+      "cdn.discordapp.com",
+      "media.tenor.com",
+      "media.giphy.com"
+    ];
+    return trustedHosts.includes(parsedUrl.host);
+  } catch (e) {
+    logger.warn(`Invalid URL provided: ${url}`);
+    return false;
+  }
 }
 
 /**
