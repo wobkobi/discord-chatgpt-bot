@@ -1,12 +1,15 @@
 /**
  * @file src/controllers/messageController.ts
  * @description Handles incoming Discord messages: applies cooldowns, manages conversation threads,
- * updates memory, invokes AI reply generation, and persists conversation state.
+ *   updates memory, invokes AI reply generation, and persists conversation state.
+ * @remarks
+ *   Implements mention and interjection logic, summarisation, URL/file extraction, and emoji replacement.
  */
 
-import { ConversationContext } from "@/types";
+import { Block, ConversationContext } from "@/types";
 import { Client, Message } from "discord.js";
 import OpenAI from "openai";
+import { isBotReady } from "../index.js";
 import { cloneUserId } from "../services/characterService.js";
 import { generateReply } from "../services/replyService.js";
 import { updateCloneMemory } from "../store/cloneMemory.js";
@@ -25,34 +28,37 @@ import {
 } from "../utils/discordHelpers.js";
 import { loadConversations, saveConversations } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
+import { extractInputs } from "../utils/urlExtractor.js";
 
 /**
- * Maximum number of messages before summarization occurs.
+ * Maximum number of messages in a thread before triggering summarisation.
  */
 const MESSAGE_LIMIT = 10;
 
-// In-memory maps storing conversation histories and ID mappings per context (guild or user)
+// In-memory maps storing conversation histories and thread ID mappings per context
 const histories = new Map<string, Map<string, ConversationContext>>();
 const idMaps = new Map<string, Map<string, string>>();
 
 /**
- * Creates and returns a handler function for new Discord messages.
- * Applies cooldowns, updates memory, threads conversations, and generates AI replies.
+ * Creates a handler function for processing new Discord messages.
+ * Applies ignore rules, cooldowns, memory updates, threading, summarisation,
+ * input extraction, AI invocation, and persistence.
  *
- * @param openai - Initialized OpenAI client for chat completions.
- * @param client - Discord Client instance for sending replies.
- * @returns A function that processes a Message and may reply via the AI.
+ * @param openai - The OpenAI client instance used for generating replies.
+ * @param client - The Discord client instance.
+ * @returns A function that handles a single Message event.
  */
 export async function handleNewMessage(
   openai: OpenAI,
   client: Client
 ): Promise<(message: Message) => Promise<void>> {
   return async (message: Message): Promise<void> => {
-    // Ignore bot messages and unwanted mass mentions
+    // Ignore bot messages, mass mentions, or if bot not initialised
     if (message.author.bot) return;
     if (message.guild && message.mentions.everyone) return;
+    if (!isBotReady()) return;
 
-    // Determine if bot was mentioned or should interject randomly
+    // ─── Mention / Interjection logic ──────────────────────────────────────────
     const mentioned = message.guild
       ? message.mentions.has(client.user!.id)
       : true;
@@ -63,9 +69,7 @@ export async function handleNewMessage(
         .sort((a, b) => b.createdTimestamp - a.createdTimestamp)
         .slice(1, 6);
       const botInLastFive = lastFive.some((m) => m.author.bot);
-      if (!botInLastFive && Math.random() < 1 / 50) {
-        interject = true;
-      }
+      if (!botInLastFive && Math.random() < 1 / 50) interject = true;
     }
     if (message.guild && !mentioned && !interject) return;
 
@@ -74,9 +78,11 @@ export async function handleNewMessage(
       message.channel.sendTyping().catch(() => {});
     }
 
-    // Update clone user memory if message is from the clone user
+    //  Memory & Cooldowns
     const userId = message.author.id;
     const guildId = message.guild?.id || null;
+
+    // Track clone user messages separately
     if (userId === cloneUserId) {
       updateCloneMemory(userId, {
         timestamp: Date.now(),
@@ -84,7 +90,7 @@ export async function handleNewMessage(
       });
     }
 
-    // Enforce cooldown
+    // Enforce cooldown if active
     const cdKey = getCooldownContext(guildId, userId);
     if (useCooldown && isCooldownActive(cdKey)) {
       const { cooldownTime } = getCooldownConfig(guildId);
@@ -96,7 +102,7 @@ export async function handleNewMessage(
     }
     if (useCooldown) manageCooldown(guildId, userId);
 
-    // Prepare conversation threading
+    // Threading & History
     const contextKey = guildId || userId;
     if (!histories.has(contextKey)) {
       histories.set(contextKey, new Map());
@@ -110,7 +116,6 @@ export async function handleNewMessage(
         : `${message.channel.id}-${message.id}`;
     convIds.set(message.id, threadId);
 
-    // Record user message in conversation history
     const convMap = histories.get(contextKey)!;
     if (!convMap.has(threadId)) convMap.set(threadId, { messages: new Map() });
     const conversation = convMap.get(threadId)!;
@@ -133,32 +138,10 @@ export async function handleNewMessage(
       }
     }
 
-    // Extract image and other URLs for context
-    const imageUrls: string[] = Array.from(message.attachments.values())
-      .filter((a) => a.contentType?.startsWith("image/"))
-      .map((a) => a.url);
-    const inlineImageUrls =
-      message.content.match(/https?:\/\/\S+\.(?:png|jpe?g|webp|gif)/gi) ?? [];
-    inlineImageUrls.forEach((url) => {
-      if (!imageUrls.includes(url)) imageUrls.push(url);
-    });
+    // ─── Input Extraction ──────────────────────────────────────────────────────
+    const { blocks, genericUrls } = await extractInputs(message);
 
-    // Handle Tenor and Giphy links
-    const tenorUrls =
-      message.content.match(/https?:\/\/tenor\.com\/\S+/gi) ?? [];
-    tenorUrls.forEach((url) => {
-      if (!imageUrls.includes(url)) imageUrls.push(url);
-    });
-    const giphyUrls =
-      message.content.match(/https?:\/\/(?:media\.)?giphy\.com\/\S+/gi) ?? [];
-    giphyUrls.forEach((url) => {
-      if (!imageUrls.includes(url)) imageUrls.push(url);
-    });
-
-    const allLinks = message.content.match(/https?:\/\/\S+/gi) ?? [];
-    const genericUrls = allLinks.filter((url) => !imageUrls.includes(url));
-
-    // Summarise conversation if too long
+    // ─── Summarise if too long ─────────────────────────────────────────────────
     if (conversation.messages.size >= MESSAGE_LIMIT) {
       const summary = summariseConversation(conversation);
       await updateUserMemory(userId, {
@@ -168,11 +151,17 @@ export async function handleNewMessage(
       conversation.messages.clear();
     }
 
-    // Build replyToInfo tag (include interjection flag)
+    // ─── Build replyToInfo & call AI ──────────────────────────────────────────
     let replyToInfo = `${message.author.username} said: "${message.content}"`;
-    if (interject) replyToInfo = `🔀 Random interjection — ${replyToInfo}`;
+    if (interject) {
+      // Indicate random interjection
+      replyToInfo = `🔀 Random interjection — ${replyToInfo}`;
+      blocks.unshift({
+        type: "text",
+        text: "[System instruction] This is a random interjection: respond as a spontaneous comment, not as an answer to a question.",
+      } as Block);
+    }
 
-    // Generate and send AI reply
     const { text, mathBuffers } = await generateReply(
       conversation.messages,
       message.id,
@@ -180,19 +169,23 @@ export async function handleNewMessage(
       userId,
       replyToInfo,
       channelHistory,
-      imageUrls,
+      blocks,
       genericUrls
     );
+
+    // Convert math buffers to attachments
     const attachments = mathBuffers.map((buf, i) => ({
       attachment: buf,
       name: `math-${i}.png`,
     }));
+
+    // Replace emoji shortcodes and send reply
     const out = message.guild
       ? replaceEmojiShortcodes(text, message.guild)
       : text;
     const sent = await message.reply({ content: out, files: attachments });
 
-    // Record assistant reply and persist
+    // Record AI reply and persist memory & conversations
     conversation.messages.set(
       sent.id,
       createChatMessage(sent, "assistant", client.user?.username)
@@ -206,9 +199,10 @@ export async function handleNewMessage(
 }
 
 /**
- * Preloads stored conversations for each guild on bot startup.
+ * Preloads stored conversations for each guild when the bot starts.
  *
- * @param client - Discord Client instance to enumerate guilds.
+ * @param client - The Discord client instance.
+ * @returns A promise that resolves when all conversations are loaded.
  */
 export async function run(client: Client): Promise<void> {
   const guildIds = Array.from(client.guilds.cache.keys());

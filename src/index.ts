@@ -1,6 +1,10 @@
 /**
  * @file src/index.ts
- * @description Entry point for initializing and running the Discord bot, including command loading, registration, and event handling.
+ * @description Entry point for initialising and running the Discord bot, including command loading,
+ *   registration, event handling, and AI integration.
+ * @remarks
+ *   Dynamically discovers and registers slash commands, initialises memory stores,
+ *   sets up message and interaction handlers, and manages graceful shutdown.
  */
 
 import { REST } from "@discordjs/rest";
@@ -15,7 +19,6 @@ import {
   Partials,
   SlashCommandBuilder,
 } from "discord.js";
-import dotenv from "dotenv";
 import { existsSync, readdirSync } from "fs";
 import OpenAI from "openai";
 import { join, resolve } from "path";
@@ -23,38 +26,36 @@ import { fileURLToPath, pathToFileURL } from "url";
 
 import { handleNewMessage, run } from "./controllers/messageController.js";
 import { initialiseUserMemory } from "./store/userMemory.js";
+import { getRequired } from "./utils/env.js";
 import logger from "./utils/logger.js";
 
-dotenv.config();
-
-// Determine commands directory dynamically
+// Determine if running compiled JS or TS source
 const __filename = fileURLToPath(import.meta.url);
 const isRunningTS = __filename.endsWith(".ts");
 
+// Compute commands directory and file extension
 const buildCommandsPath = join(resolve(), "build", "commands");
-
 const commandsPath =
   !isRunningTS && existsSync(buildCommandsPath)
     ? buildCommandsPath
     : join(resolve(), "src", "commands");
-
 const extension = !isRunningTS && existsSync(buildCommandsPath) ? ".js" : ".ts";
 
 logger.info(`🔍 Loading commands from ${commandsPath}`);
 
 /**
- * Defines the structure of a slash-command module.
+ * Structure of a slash-command module.
  */
 interface SlashCommandModule {
   /** Slash command builder data. */
   data: SlashCommandBuilder;
-  /** Execute function for handling the interaction. */
+  /** Handler for executing the command interaction. */
   execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
 }
 
 declare module "discord.js" {
   interface Client {
-    /** Collection of registered slash commands. */
+    /** Collection of registered slash commands by name. */
     commands: Collection<string, SlashCommandModule>;
   }
 }
@@ -62,17 +63,15 @@ declare module "discord.js" {
 let botReady = false;
 
 /**
- * Checks if the bot has finished initialization and is ready.
+ * Indicates whether the bot has completed initialisation and is ready to process messages.
  *
- * @returns True if ready, false otherwise.
+ * @returns True if initialisation is complete; false otherwise.
  */
 export function isBotReady(): boolean {
   return botReady;
 }
 
-/**
- * Discord client with specified intents and partials.
- */
+// Create Discord client with required intents and partials
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -84,7 +83,10 @@ const client = new Client({
 });
 client.commands = new Collection<string, SlashCommandModule>();
 
-// Dynamically import and register each command, awaiting all before proceeding
+/**
+ * Dynamically imports all command modules from the commands directory.
+ * Logs warnings for invalid modules and errors for failed imports.
+ */
 (async () => {
   const files = readdirSync(commandsPath).filter((f) => f.endsWith(extension));
   await Promise.all(
@@ -116,20 +118,20 @@ client.commands = new Collection<string, SlashCommandModule>();
 })();
 
 /**
- * Registers all loaded slash commands globally with Discord.
+ * Registers all loaded slash commands globally with the Discord API.
  *
  * @async
- * @throws Will throw if the REST API call fails.
+ * @throws If the REST API call fails.
  */
 async function registerGlobalCommands(): Promise<void> {
-  const rest = new REST({ version: "10" }).setToken(process.env.BOT_TOKEN!);
+  const rest = new REST({ version: "10" }).setToken(getRequired("BOT_TOKEN")!);
   const payload = Array.from(client.commands.values()).map((c) =>
     c.data.toJSON()
   );
 
   try {
     logger.info("🌐 Registering global slash commands...");
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID!), {
+    await rest.put(Routes.applicationCommands(getRequired("CLIENT_ID")!), {
       body: payload,
     });
     logger.info("✅ Slash commands registered.");
@@ -139,12 +141,14 @@ async function registerGlobalCommands(): Promise<void> {
   }
 }
 
-// Initialize OpenAI client
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-// Handler placeholder
+// Initialise OpenAI client
+const openai = new OpenAI({ apiKey: getRequired("OPENAI_API_KEY") });
 let messageHandler: (message: Message) => Promise<void>;
 
-// Setup event listeners
+/**
+ * Set up event listeners for the Discord client: ready, messageCreate, interactionCreate.
+ * Handles command execution, message interjections, and graceful shutdown.
+ */
 client.once("ready", async () => {
   logger.info(`🤖 Logged in as ${client.user!.tag}`);
 
@@ -152,7 +156,7 @@ client.once("ready", async () => {
   await initialiseUserMemory();
 
   messageHandler = await handleNewMessage(openai, client);
-  logger.info("🔄 Message handler initialized.");
+  logger.info("🔄 Message handler initialised.");
 
   await run(client);
   botReady = true;
@@ -178,16 +182,18 @@ client.on("interactionCreate", async (interaction: Interaction) => {
     await command.execute(interaction as ChatInputCommandInteraction);
   } catch (err) {
     logger.error(`🛑 Error executing /${interaction.commandName}:`, err);
-    const reply = { content: "⚠️ There was an error.", ephemeral: true };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(reply);
+    const replyOptions = { content: "⚠️ There was an error.", ephemeral: true };
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp(replyOptions);
     } else {
-      await interaction.reply(reply);
+      await interaction.reply(replyOptions);
     }
   }
 });
 
-// Handle global errors and shutdown
+/**
+ * Handles unhandled promise rejections and SIGINT for graceful shutdown.
+ */
 process.on("unhandledRejection", (reason) => {
   logger.error("Unhandled promise rejection:", reason);
 });
@@ -197,8 +203,8 @@ process.on("SIGINT", () => {
   process.exit(0);
 });
 
-// Start the bot
+// Start the bot login sequence
 client
-  .login(process.env.BOT_TOKEN)
+  .login(getRequired("BOT_TOKEN"))
   .then(() => logger.info("🚀 Login successful."))
   .catch((err) => logger.error("❌ Login failed:", err));

@@ -1,6 +1,7 @@
 /**
  * @file src/services/characterService.ts
- * @description Loads persona configuration and constructs the system prompt for the AI, including clone-specific styling, timestamp, and markdown guidelines.
+ * @description Loads persona configuration and constructs the system prompt for the AI,
+ *   including clone-specific styling, timestamp, and markdown guidelines.
  */
 
 import { DateTime } from "luxon";
@@ -25,7 +26,7 @@ const persona = require(
   markdownGuide: string;
 };
 
-/** ID of the clone user, used to apply clone-specific behaviors. */
+/** ID of the clone user, used to apply clone-specific behaviours. */
 export const cloneUserId = persona.cloneUserId;
 
 /** Markdown formatting guide appended to system prompts. */
@@ -71,12 +72,12 @@ export async function getCharacterDescription(
     description += `\n\nAs a clone, your recent style: ${styleSnippet}`;
   }
 
-  // Append the current timestamp
+  // Append the current timestamp in NZ locale format
   const now = DateTime.now().toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS);
   description += `\n\n_Current time: ${now}_`;
 
-  // Add the markdown guide at the end
-  description += `\n\n${markdownGuide}`;
+  // Append markdown guide
+  description += `\n\n${persona.markdownGuide}`;
 
   // Escape any TeX sequences for Discord
   return fixMathFormatting(description);

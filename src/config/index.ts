@@ -1,14 +1,15 @@
 /**
  * @file src/config/index.ts
- * @description Defines and persists per-guild cooldown configuration for the bot.
+ * @description Defines, loads, and persists per-guild cooldown configuration for the bot.
  */
 
 import fs from "fs/promises";
 import { join } from "path";
 import logger from "../utils/logger.js";
+import { CONFIG_FILE } from "./paths.js";
 
 /**
- * Configuration options for per-guild cooldown behavior.
+ * Configuration options for per-guild cooldown behaviour.
  */
 export interface GuildCooldownConfig {
   /** Whether cooldown logic is enabled for this guild. */
@@ -30,17 +31,9 @@ export const defaultCooldownConfig: GuildCooldownConfig = {
 
 /**
  * In-memory cache of guild-specific cooldown configurations.
+ * Maps guild ID strings to their respective config.
  */
 export const guildCooldownConfigs = new Map<string, GuildCooldownConfig>();
-
-/**
- * Absolute path to the JSON file persisting guild cooldown settings.
- */
-const CONFIG_FILE_PATH = join(
-  process.cwd(),
-  "data",
-  "guildCooldownConfigs.json"
-);
 
 /**
  * Load persisted guild cooldown configurations from disk into memory.
@@ -51,14 +44,15 @@ const CONFIG_FILE_PATH = join(
  */
 export async function loadGuildCooldownConfigs(): Promise<void> {
   try {
-    const file = await fs.readFile(CONFIG_FILE_PATH, "utf-8");
+    const file = await fs.readFile(CONFIG_FILE, "utf-8");
     const parsed: Record<string, GuildCooldownConfig> = JSON.parse(file);
     for (const [guildId, config] of Object.entries(parsed)) {
       guildCooldownConfigs.set(guildId, config);
     }
     logger.info("✅ Loaded guild cooldown configurations from disk.");
   } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code === "ENOENT") {
       logger.warn("⚠️ No cooldown config file found; using defaults.");
     } else {
       logger.error("❌ Failed to load guild cooldown configs:", err);
@@ -80,12 +74,10 @@ export async function saveGuildCooldownConfigs(): Promise<void> {
       toSave[guildId] = config;
     }
 
+    // Ensure data directory exists
     await fs.mkdir(join(process.cwd(), "data"), { recursive: true });
-    await fs.writeFile(
-      CONFIG_FILE_PATH,
-      JSON.stringify(toSave, null, 2),
-      "utf-8"
-    );
+    // Write JSON with 2-space indentation for readability
+    await fs.writeFile(CONFIG_FILE, JSON.stringify(toSave, null, 2), "utf-8");
     logger.info("✅ Saved guild cooldown configurations to disk.");
   } catch (err: unknown) {
     logger.error("❌ Failed to save guild cooldown configs:", err);
