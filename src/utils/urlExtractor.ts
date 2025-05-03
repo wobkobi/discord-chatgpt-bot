@@ -61,7 +61,7 @@ function isTrustedImageHost(url: string): boolean {
 export async function extractInputs(
   message: Message
 ): Promise<{ blocks: Block[]; genericUrls: string[] }> {
-  const tenorApiKey = getRequired("process.TENOR_API_KEY");
+  const tenorApiKey = getRequired("TENOR_API_KEY");
   const giphyApiKey = getRequired("GIPHY_API_KEY");
 
   const blocks: Block[] = [];
