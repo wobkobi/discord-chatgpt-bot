@@ -11,17 +11,15 @@ import { TransformableInfo } from "logform";
 import path from "path";
 import winston from "winston";
 import DailyRotateFile from "winston-daily-rotate-file";
+import { LOGS_DIR, LOGS_ERROR_DIR } from "../config/paths.js";
 import { getRequired } from "./env.js";
 
 const { combine, timestamp, printf, colorize, errors } = winston.format;
 
-// Directories for logs and error logs
-const logsDir = path.join(process.cwd(), "logs");
-const errorDir = path.join(logsDir, "error");
-
 // Ensure log directories exist
-if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
-if (!fs.existsSync(errorDir)) fs.mkdirSync(errorDir, { recursive: true });
+if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
+if (!fs.existsSync(LOGS_ERROR_DIR))
+  fs.mkdirSync(LOGS_ERROR_DIR, { recursive: true });
 
 /**
  * Custom log format: includes timestamp, uppercase level, message or error stack,
@@ -60,12 +58,12 @@ const consoleTransport = new winston.transports.Console({
  */
 const errorRotateTransport = new DailyRotateFile({
   level: "error",
-  dirname: errorDir,
+  dirname: LOGS_ERROR_DIR,
   filename: "error-%DATE%.log",
   datePattern: "YYYY-MM-DD",
   zippedArchive: true,
   maxFiles: "14d",
-  symlinkName: path.join(errorDir, "latest.log"),
+  symlinkName: path.join(LOGS_ERROR_DIR, "latest.log"),
 });
 
 /**
@@ -74,12 +72,12 @@ const errorRotateTransport = new DailyRotateFile({
  */
 const combinedRotateTransport = new DailyRotateFile({
   level: getRequired("LOG_LEVEL") || "info",
-  dirname: logsDir,
+  dirname: LOGS_DIR,
   filename: "combined-%DATE%.log",
   datePattern: "YYYY-MM-DD",
   zippedArchive: true,
   maxFiles: "30d",
-  symlinkName: path.join(logsDir, "latest.log"),
+  symlinkName: path.join(LOGS_DIR, "latest.log"),
 });
 
 /**

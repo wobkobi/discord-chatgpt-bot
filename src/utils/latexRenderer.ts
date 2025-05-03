@@ -15,12 +15,8 @@ import { mathjax } from "mathjax-full/js/mathjax.js";
 import { SVG } from "mathjax-full/js/output/svg.js";
 import path from "path";
 import sharp from "sharp";
-import { fileURLToPath } from "url";
-import logger from "./logger";
-
-// ESM __dirname shim
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { OUTPUT_DIR } from "../config/paths.js";
+import logger from "./logger.js";
 
 // Initialise MathJax for server-side SVG generation
 const adaptor = liteAdaptor();
@@ -28,9 +24,6 @@ RegisterHTMLHandler(adaptor);
 const tex = new TeX();
 const svgJax = new SVG({ fontCache: "none" });
 const html = mathjax.document("", { InputJax: tex, OutputJax: svgJax });
-
-// Directory where rendered outputs are stored
-const OUTPUT_DIR = path.resolve(__dirname, "../../data/output");
 
 /**
  * Ensure the output directory exists, creating it recursively if necessary.

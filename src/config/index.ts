@@ -6,6 +6,7 @@
 import fs from "fs/promises";
 import { join } from "path";
 import logger from "../utils/logger.js";
+import { CONFIG_FILE } from "./paths.js";
 
 /**
  * Configuration options for per-guild cooldown behaviour.
@@ -35,15 +36,6 @@ export const defaultCooldownConfig: GuildCooldownConfig = {
 export const guildCooldownConfigs = new Map<string, GuildCooldownConfig>();
 
 /**
- * Absolute path to the JSON file persisting guild cooldown settings.
- */
-const CONFIG_FILE_PATH = join(
-  process.cwd(),
-  "data",
-  "guildCooldownConfigs.json"
-);
-
-/**
  * Load persisted guild cooldown configurations from disk into memory.
  * If the file is missing or malformed, logs a warning and continues with defaults.
  *
@@ -52,7 +44,7 @@ const CONFIG_FILE_PATH = join(
  */
 export async function loadGuildCooldownConfigs(): Promise<void> {
   try {
-    const file = await fs.readFile(CONFIG_FILE_PATH, "utf-8");
+    const file = await fs.readFile(CONFIG_FILE, "utf-8");
     const parsed: Record<string, GuildCooldownConfig> = JSON.parse(file);
     for (const [guildId, config] of Object.entries(parsed)) {
       guildCooldownConfigs.set(guildId, config);
@@ -85,11 +77,7 @@ export async function saveGuildCooldownConfigs(): Promise<void> {
     // Ensure data directory exists
     await fs.mkdir(join(process.cwd(), "data"), { recursive: true });
     // Write JSON with 2-space indentation for readability
-    await fs.writeFile(
-      CONFIG_FILE_PATH,
-      JSON.stringify(toSave, null, 2),
-      "utf-8"
-    );
+    await fs.writeFile(CONFIG_FILE, JSON.stringify(toSave, null, 2), "utf-8");
     logger.info("✅ Saved guild cooldown configurations to disk.");
   } catch (err: unknown) {
     logger.error("❌ Failed to save guild cooldown configs:", err);

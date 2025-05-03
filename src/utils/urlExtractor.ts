@@ -41,10 +41,10 @@ function isTrustedImageHost(url: string): boolean {
     const trustedHosts = [
       "cdn.discordapp.com",
       "media.tenor.com",
-      "media.giphy.com"
+      "media.giphy.com",
     ];
     return trustedHosts.includes(parsedUrl.host);
-  } catch (e) {
+  } catch {
     logger.warn(`Invalid URL provided: ${url}`);
     return false;
   }

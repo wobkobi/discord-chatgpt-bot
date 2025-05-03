@@ -15,15 +15,9 @@ import {
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import { join } from "path";
+import { CLONE_MEM_DIR, CONV_DIR, USER_MEM_DIR } from "../config/paths.js";
 import logger from "../utils/logger.js";
 import { getRequired } from "./env.js";
-
-// Directories for persistence
-const BASE_DIR = join(process.cwd(), "data");
-const CONV_DIR = join(BASE_DIR, "conversations");
-const USER_MEM_DIR = join(BASE_DIR, "memory", "user");
-const CLONE_MEM_DIR = join(BASE_DIR, "memory", "clone");
-const ERRORS_DIR = join(BASE_DIR, "errors");
 
 // Encryption settings
 const ALGORITHM = "aes-256-gcm";
@@ -217,23 +211,4 @@ export async function loadConversations(
   }
   histories.set(ctx, convMap);
   idMaps.set(ctx, idMap);
-}
-
-/**
- * Asynchronously log an error to a daily file in the errors directory.
- *
- * @param err - The error object or message to log.
- */
-export async function logErrorToFile(err: unknown): Promise<void> {
-  try {
-    await ensureDir(ERRORS_DIR);
-    const dateStamp = new Date().toISOString().slice(0, 10);
-    const filePath = join(ERRORS_DIR, `error-${dateStamp}.log`);
-    const line = `${new Date().toISOString()} - ${
-      err instanceof Error ? err.stack : String(err)
-    }\n`;
-    await fs.appendFile(filePath, line, "utf8");
-  } catch (fsErr) {
-    logger.error("Failed to write to error log:", fsErr);
-  }
 }
