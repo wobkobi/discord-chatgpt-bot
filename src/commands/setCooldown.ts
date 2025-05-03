@@ -1,11 +1,12 @@
 /**
  * @file src/commands/setcooldown.ts
- * @description Slash command to configure the server’s message cooldown settings (owner-only).
+ * @description Slash command to configure the server's message cooldown settings,
+ *   restricted to the bot owner or server administrators.
  */
-
 import {
   ChatInputCommandInteraction,
   MessageFlags,
+  PermissionsBitField,
   SlashCommandBuilder,
 } from "discord.js";
 import {
@@ -13,16 +14,21 @@ import {
   guildCooldownConfigs,
   saveGuildCooldownConfigs,
 } from "../config/index.js";
+import { getRequired } from "../utils/env.js";
 import logger from "../utils/logger.js";
 
-const OWNER_ID = process.env.OWNER_ID;
+const OWNER_ID = getRequired("OWNER_ID");
 
 /**
- * Registration data for the /setcooldown slash command.
+ * Slash command registration data for /setcooldown.
+ * @param time - Cooldown duration in seconds (0 disables cooldown).
+ * @param peruser - Whether to apply the cooldown on a per-user basis.
  */
 export const data = new SlashCommandBuilder()
   .setName("setcooldown")
-  .setDescription("Configure this server’s message cooldown (owner only)")
+  .setDescription(
+    "Configure this server’s message cooldown (owner or admin only)"
+  )
   .addNumberOption((opt) =>
     opt
       .setName("time")
@@ -37,29 +43,36 @@ export const data = new SlashCommandBuilder()
   );
 
 /**
- * Handles the /setcooldown command by validating permissions and options,
- * updating the guild’s cooldown configuration, and persisting changes.
- *
- * @param interaction - The interaction context for the command.
+ * Executes the /setcooldown command.
+ * Validates permissions, updates the guild's cooldown config, and persists changes.
+ * @param interaction - The interaction context for the slash command.
+ * @returns A promise that resolves when the reply is sent.
  */
 export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
   try {
-    // Only the bot owner can configure cooldown
-    if (!OWNER_ID || interaction.user.id !== OWNER_ID) {
+    const userId = interaction.user.id;
+    const isOwner = OWNER_ID === userId;
+    const isAdmin = interaction.memberPermissions?.has(
+      PermissionsBitField.Flags.Administrator
+    );
+
+    // Permission check: only owner or admin may proceed
+    if (!isOwner && !isAdmin) {
       await interaction.reply({
-        content: "🚫 You are not allowed to configure cooldown.",
+        content:
+          "🚫 You must be a server admin or the bot owner to configure cooldown.",
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
-    // Extract options
+    // Retrieve options
     const time = interaction.options.getNumber("time", true);
     const perUser = interaction.options.getBoolean("peruser") ?? false;
 
-    // Must be run in a guild
+    // Ensure command is used in a guild
     const guildId = interaction.guild?.id;
     if (!guildId) {
       await interaction.reply({
@@ -69,7 +82,7 @@ export async function execute(
       return;
     }
 
-    // Validate time value
+    // Validate time argument
     if (time < 0) {
       await interaction.reply({
         content: "⏱️ Cooldown time must be zero or positive.",
@@ -78,7 +91,7 @@ export async function execute(
       return;
     }
 
-    // Update and persist new configuration
+    // Apply and save new configuration
     const newConfig: GuildCooldownConfig = {
       useCooldown: time > 0,
       cooldownTime: time,
@@ -93,6 +106,7 @@ export async function execute(
       )}`
     );
 
+    // Confirm update to user
     await interaction.reply({
       content: `✅ Cooldown updated: **${time}s**, scope: **${
         perUser ? "per user" : "global"

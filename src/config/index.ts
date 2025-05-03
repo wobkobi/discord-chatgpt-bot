@@ -1,6 +1,6 @@
 /**
  * @file src/config/index.ts
- * @description Defines and persists per-guild cooldown configuration for the bot.
+ * @description Defines, loads, and persists per-guild cooldown configuration for the bot.
  */
 
 import fs from "fs/promises";
@@ -8,7 +8,7 @@ import { join } from "path";
 import logger from "../utils/logger.js";
 
 /**
- * Configuration options for per-guild cooldown behavior.
+ * Configuration options for per-guild cooldown behaviour.
  */
 export interface GuildCooldownConfig {
   /** Whether cooldown logic is enabled for this guild. */
@@ -30,6 +30,7 @@ export const defaultCooldownConfig: GuildCooldownConfig = {
 
 /**
  * In-memory cache of guild-specific cooldown configurations.
+ * Maps guild ID strings to their respective config.
  */
 export const guildCooldownConfigs = new Map<string, GuildCooldownConfig>();
 
@@ -58,7 +59,8 @@ export async function loadGuildCooldownConfigs(): Promise<void> {
     }
     logger.info("✅ Loaded guild cooldown configurations from disk.");
   } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code === "ENOENT") {
       logger.warn("⚠️ No cooldown config file found; using defaults.");
     } else {
       logger.error("❌ Failed to load guild cooldown configs:", err);
@@ -80,7 +82,9 @@ export async function saveGuildCooldownConfigs(): Promise<void> {
       toSave[guildId] = config;
     }
 
+    // Ensure data directory exists
     await fs.mkdir(join(process.cwd(), "data"), { recursive: true });
+    // Write JSON with 2-space indentation for readability
     await fs.writeFile(
       CONFIG_FILE_PATH,
       JSON.stringify(toSave, null, 2),

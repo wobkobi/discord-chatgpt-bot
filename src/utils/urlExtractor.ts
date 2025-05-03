@@ -1,31 +1,40 @@
 /**
  * @file src/utils/urlExtractor.ts
- * @description Extracts and normalizes attachments and inline media into ChatGPT Block inputs
- *              (text, image_url, file for PDFs), plus remaining “generic” links from a Discord message.
+ * @description Extracts and normalises attachments and inline media into ChatGPT Block inputs
+ *   (text, image_url, file for PDFs), plus collects remaining "generic" links from a Discord message.
+ * @remarks
+ *   Supports Discord attachments, inline CDN URLs, image extensions, Tenor GIFs, Giphy links, and other file types.
  */
 
 import { Block } from "@/types/index.js";
 import { GiphyFetch } from "@giphy/js-fetch-api";
 import { Message } from "discord.js";
-import dotenv from "dotenv";
 import fetch from "node-fetch";
 import { stripQuery } from "./discordHelpers.js";
+import { getRequired } from "./env.js";
 import logger from "./logger.js";
 
-dotenv.config();
-
 interface TenorMediaFormats {
-  gif?: {
-    url: string;
-  };
+  /** GIF format with URL to the media */
+  gif?: { url: string };
 }
+
 interface TenorPost {
+  /** Media formats available in the Tenor post */
   media_formats: TenorMediaFormats;
 }
+
 interface TenorPostsResponse {
+  /** Array of returned Tenor posts */
   results: TenorPost[];
 }
 
+/**
+ * Determine if a URL is hosted on a trusted image host (Discord CDN, Tenor, Giphy).
+ *
+ * @param url - The URL to check.
+ * @returns True if the host is trusted for direct image linking.
+ */
 function isTrustedImageHost(url: string): boolean {
   return (
     url.startsWith("https://cdn.discordapp.com") ||
@@ -34,53 +43,51 @@ function isTrustedImageHost(url: string): boolean {
   );
 }
 
+/**
+ * Extracts attachment and inline media blocks and generic URLs from a Discord message.
+ *
+ * @param message - The Discord message to process.
+ * @returns An object containing:
+ *   - blocks: Array of multimodal Blocks (text, image_url, file).
+ *   - genericUrls: Array of remaining link URLs as strings.
+ */
 export async function extractInputs(
   message: Message
 ): Promise<{ blocks: Block[]; genericUrls: string[] }> {
-  const tenorApiKey = process.env.TENOR_API_KEY;
-  const giphyApiKey = process.env.GIPHY_API_KEY;
+  const tenorApiKey = getRequired("process.TENOR_API_KEY");
+  const giphyApiKey = getRequired("GIPHY_API_KEY");
 
   const blocks: Block[] = [];
   const seenImages = new Set<string>();
   const skipPages = new Set<string>();
 
-  for (const a of message.attachments.values()) {
-    const url = a.url;
+  // 1) Process Discord attachments
+  for (const att of message.attachments.values()) {
+    const url = att.url;
     const bare = stripQuery(url);
-    const name = a.name || "file";
-    // discord.js provides contentType if known
-    const ct = a.contentType || "application/octet-stream";
+    const name = att.name || "file";
+    const ct = att.contentType || "application/octet-stream";
 
     if (ct.startsWith("image/")) {
-      // image attachments
       blocks.push({ type: "image_url", image_url: { url } });
       seenImages.add(bare);
     } else if (ct.startsWith("text/")) {
-      // text attachments (any text/*)
       try {
         const res = await fetch(url);
         const txt = await res.text();
-        // guess extension from name
         const ext = name.split(".").pop() || "txt";
-        blocks.push({
-          type: "text",
-          text: `\`\`\`${ext}\n${txt}\n\`\`\``,
-        });
+        blocks.push({ type: "text", text: `\`\`\`${ext}\n${txt}\n\`\`\`` });
       } catch (e) {
         logger.warn("Failed to fetch text attachment, skipping:", e);
       }
     } else {
-      // everything else: embed as file block
       try {
         const res = await fetch(url);
         const buf = await res.arrayBuffer();
         const b64 = Buffer.from(buf).toString("base64");
         blocks.push({
           type: "file",
-          file: {
-            filename: name,
-            file_data: `data:${ct};base64,${b64}`,
-          },
+          file: { filename: name, file_data: `data:${ct};base64,${b64}` },
         });
       } catch (e) {
         logger.warn("Failed to fetch binary attachment, skipping:", e);
@@ -88,11 +95,11 @@ export async function extractInputs(
     }
   }
 
-  // 2) DISCORD‐CDN inline URLs (including querystrings)
+  // 2) Inline Discord CDN URLs
   const discordCdnInline =
     message.content.match(
       /https?:\/\/cdn\.discordapp\.com\/attachments\/\d+\/\d+\/[^\s"<>]+(?:\?[^\s"<>]*)?/gi
-    ) ?? [];
+    ) || [];
   for (const url of discordCdnInline) {
     const bare = stripQuery(url);
     if (!seenImages.has(bare)) {
@@ -101,24 +108,22 @@ export async function extractInputs(
     }
   }
 
-  // 3) INLINE IMAGES BY EXTENSION (other hosts)
+  // 3) Inline images by extension
   const inlineImageUrls =
     message.content.match(
       /https?:\/\/[^\s"<>]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s"<>]*)?/gi
-    ) ?? [];
+    ) || [];
   for (const raw of inlineImageUrls) {
     const clean = stripQuery(raw);
     if (seenImages.has(clean)) continue;
-
     if (isTrustedImageHost(clean)) {
       blocks.push({ type: "image_url", image_url: { url: clean } });
     } else {
-      // fetch & embed as data URI
       try {
         const res = await fetch(clean);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const ct =
-          res.headers.get("content-type") ?? "application/octet-stream";
+          res.headers.get("content-type") || "application/octet-stream";
         const buf = await res.arrayBuffer();
         const b64 = Buffer.from(buf).toString("base64");
         blocks.push({
@@ -133,10 +138,10 @@ export async function extractInputs(
     seenImages.add(clean);
   }
 
-  // 4) TENOR GIFS via v2/posts lookup
+  // 4) Tenor GIF extraction
   if (tenorApiKey) {
     const tenorLinks =
-      message.content.match(/https?:\/\/tenor\.com\/view\/\S+/gi) ?? [];
+      message.content.match(/https?:\/\/tenor\.com\/view\/\S+/gi) || [];
     for (const link of tenorLinks) {
       skipPages.add(stripQuery(link));
       const m = link.match(/-([0-9]+)(?:$|\?)/);
@@ -161,13 +166,13 @@ export async function extractInputs(
     }
   }
 
-  // 5) GIPHY via SDK
+  // 5) Giphy GIF extraction
   if (giphyApiKey) {
     const gf = new GiphyFetch(giphyApiKey);
     const giphyLinks =
       message.content.match(
         /https?:\/\/(?:www\.)?giphy\.com\/gifs\/[^\s"<>]+/gi
-      ) ?? [];
+      ) || [];
     for (const link of giphyLinks) {
       skipPages.add(stripQuery(link));
       const parts = link.split("-");
@@ -187,12 +192,11 @@ export async function extractInputs(
     }
   }
 
-  // 6) GENERIC LINKS
-  const allLinks = message.content.match(/https?:\/\/[^\s"<>]+/gi) ?? [];
+  // 6) Generic links
+  const allLinks = message.content.match(/https?:\/\/[^\s"<>]+/gi) || [];
   const genericUrls = allLinks.filter((url) => {
     const bare = stripQuery(url);
-    if (seenImages.has(bare)) return false;
-    if (skipPages.has(bare)) return false;
+    if (seenImages.has(bare) || skipPages.has(bare)) return false;
     return !/\.(?:png|jpe?g|webp|gif)(?:\?|$)/i.test(bare);
   });
 

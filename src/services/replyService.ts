@@ -1,8 +1,8 @@
 /**
  * @file src/services/replyService.ts
- * @description Builds the AI response prompt from conversation history, multimodal blocks (text, images, files),
- * invokes OpenAI for completion, renders LaTeX math blocks to images, and returns the cleaned reply text
- * along with any math image buffers.
+ * @description Builds the AI response prompt from conversation history and multimodal blocks,
+ *   invokes OpenAI for chat completion, renders LaTeX math to PNG buffers, and returns cleaned
+ *   reply text along with any generated math images.
  */
 
 import { Block, ChatMessage } from "@/types";
@@ -11,6 +11,7 @@ import { ChatCompletionMessageParam } from "openai/resources/chat";
 import { cloneMemory } from "../store/cloneMemory.js";
 import { userMemory } from "../store/userMemory.js";
 import { applyDiscordMarkdownFormatting } from "../utils/discordHelpers.js";
+import { getRequired } from "../utils/env.js";
 import { renderMathToPng } from "../utils/latexRenderer.js";
 import logger from "../utils/logger.js";
 import {
@@ -20,25 +21,28 @@ import {
 } from "./characterService.js";
 
 /**
- * A user message carrying structured blocks for multimodal input.
+ * A structured user message containing an array of multimodal blocks.
  */
 export interface ChatCompletionBlockMessage {
+  /** The role should always be 'user' for block messages. */
   role: "user";
+  /** The sequence of content blocks (text, images, files). */
   content: Block[];
 }
 
 /**
- * Generate an AI reply based on conversation history, multimodal blocks, and context.
+ * Generate an AI reply based on provided context and input blocks.
  *
- * @param convoHistory - Map of message IDs to ChatMessage objects representing the thread.
- * @param currentId - Discord message ID of the latest user message to reply to.
- * @param openai - Initialized OpenAI client for chat completions.
- * @param userId - Discord user ID to fetch appropriate memory and persona.
- * @param replyToInfo - Optional summary of the message triggering this reply.
- * @param channelHistory - Optional string of recent channel messages for broader context.
- * @param blocks - Pre-extracted blocks (text, image_url, file) from the user message.
- * @param genericUrls - Remaining links to include as text blocks.
- * @returns An object containing the final reply text and an array of PNG buffers for rendered math.
+ * @param convoHistory - Map of message IDs to ChatMessage objects representing the thread history.
+ * @param currentId - Discord message ID of the latest user message.
+ * @param openai - An initialized OpenAI client instance.
+ * @param userId - Discord user ID for memory and persona selection.
+ * @param replyToInfo - Optional system note summarising what triggered this reply.
+ * @param channelHistory - Optional literal string of recent channel messages for additional context.
+ * @param blocks - Pre-extracted multimodal Blocks from the user message.
+ * @param genericUrls - Remaining URLs to include as text blocks.
+ * @returns A promise resolving to an object with the cleaned reply text and array of PNG buffers for rendered math.
+ * @throws Will rethrow unexpected OpenAI errors after handling quota and model-not-found cases.
  */
 export async function generateReply(
   convoHistory: Map<string, ChatMessage>,
@@ -50,17 +54,19 @@ export async function generateReply(
   blocks: Block[] = [],
   genericUrls: string[] = []
 ): Promise<{ text: string; mathBuffers: Buffer[] }> {
-  // Feature toggles
-  const useFT = process.env.USE_FINE_TUNED_MODEL === "true";
-  const usePersona = process.env.USE_PERSONA === "true";
-  const modelName = useFT ? process.env.FINE_TUNED_MODEL_NAME! : "gpt-4o";
+  // Feature toggles from environment
+  const useFT = getRequired("USE_FINE_TUNED_MODEL") === "true";
+  const usePersona = getRequired("USE_PERSONA") === "true";
+  const modelName = useFT ? getRequired("FINE_TUNED_MODEL_NAME")! : "gpt-4o";
 
-  // Build system messages
+  // Build the system and user messages for OpenAI
   const messages: ChatCompletionMessageParam[] = [];
 
+  // Persona/system prompt
   const persona = await getCharacterDescription(userId);
   messages.push({ role: "system", content: persona });
 
+  // Long-term or clone memory
   if (usePersona || useFT) {
     const memArr =
       userId === cloneUserId
@@ -68,25 +74,24 @@ export async function generateReply(
         : userMemory.get(userId) || [];
     if (memArr.length) {
       const prefix =
-        userId === cloneUserId ? "Clone memory:\n" : "Long-term memory:\n";
+        userId === cloneUserId ? "Clone memory:" : "Long-term memory:";
       messages.push({
         role: "system",
-        content: prefix + memArr.map((e) => e.content).join("\n"),
+        content: prefix + "\n" + memArr.map((e) => e.content).join("\n"),
       });
     }
   }
 
+  // Optional context injections
   if (replyToInfo) messages.push({ role: "system", content: replyToInfo });
-
   if (channelHistory)
     messages.push({
       role: "system",
       content: `Recent channel history:\n${channelHistory}`,
     });
-
   messages.push({ role: "system", content: markdownGuide });
 
-  // Build user-side blocks (history + current)
+  // Assemble user blocks from history
   const userBlocks: Block[] = [];
   let cursor: string | undefined = currentId;
   while (cursor) {
@@ -104,17 +109,13 @@ export async function generateReply(
     cursor = turn.replyToId;
   }
 
-  // Append the extracted multimodal blocks
-  for (const b of blocks) {
-    userBlocks.push(b);
-  }
-
-  // Append any leftover generic URLs as text blocks
+  // Add new multimodal blocks and URLs
+  userBlocks.push(...blocks);
   for (const url of genericUrls) {
     userBlocks.push({ type: "text", text: `[link] ${url}` });
   }
 
-  // Package into a single user-block message
+  // Wrap in ChatCompletionBlockMessage
   const blockMessage: ChatCompletionBlockMessage = {
     role: "user",
     content: userBlocks,
@@ -124,7 +125,7 @@ export async function generateReply(
   logger.info(`📝 Prompt → model=${modelName}, blocks=${userBlocks.length}`);
   logger.debug(`Prompt context: ${JSON.stringify(messages, null, 2)}`);
 
-  // Invoke OpenAI
+  // Call OpenAI chat completion
   let aiContent: string;
   try {
     const res = await openai.chat.completions.create({
@@ -148,7 +149,7 @@ export async function generateReply(
     throw err;
   }
 
-  // Render any LaTeX math blocks
+  // Render LaTeX math expressions to PNG buffers
   const mathBuffers: Buffer[] = [];
   for (const match of aiContent.matchAll(/\\\[(.+?)\\\]/g)) {
     try {
@@ -159,7 +160,7 @@ export async function generateReply(
     }
   }
 
-  // Strip out the LaTeX markers from the text
+  // Remove LaTeX markers and collapse blank lines
   let replyText = aiContent.replace(/\\\[(.+?)\\\]/g, "");
   replyText = replyText.replace(/(\r?\n){2,}/g, "\n").trim();
 

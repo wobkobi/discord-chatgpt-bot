@@ -1,18 +1,17 @@
 /**
  * @file src/utils/logger.ts
  * @description Configures and exports a Winston logger with console and file transports,
- * including daily rotation for combined logs and error-specific logs, and provides a static "latest.log" symlink.
+ *   including daily rotation for combined logs and error-specific logs, and provides a static "latest.log" symlink.
+ * @remarks
+ *   Uses timestamped formatting, error stack inclusion, and emits an audible bell on error entries.
  */
 
-import dotenv from "dotenv";
 import fs from "fs";
 import { TransformableInfo } from "logform";
 import path from "path";
 import winston from "winston";
 import DailyRotateFile from "winston-daily-rotate-file";
-
-// Load environment variables for LOG_LEVEL, etc.
-dotenv.config();
+import { getRequired } from "./env.js";
 
 const { combine, timestamp, printf, colorize, errors } = winston.format;
 
@@ -20,21 +19,27 @@ const { combine, timestamp, printf, colorize, errors } = winston.format;
 const logsDir = path.join(process.cwd(), "logs");
 const errorDir = path.join(logsDir, "error");
 
-// Ensure directories exist
+// Ensure log directories exist
 if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
 if (!fs.existsSync(errorDir)) fs.mkdirSync(errorDir, { recursive: true });
 
 /**
- * Formats log entries with timestamp, level, and message/stack. Emits a bell on errors.
+ * Custom log format: includes timestamp, uppercase level, message or error stack,
+ * and emits a bell character on errors.
+ *
+ * @param info - The log information object.
+ * @returns A formatted log string, with audible bell on error level.
  */
 const logFormat = printf((info: TransformableInfo) => {
   const bell = info.level === "error" ? "\u0007" : "";
-  const base = `[${info.timestamp}] [${info.level.toUpperCase()}]: ${info.stack || info.message}`;
+  const base = `[${info.timestamp}] [${info.level.toUpperCase()}]: ${
+    info.stack || info.message
+  }`;
   return bell + base;
 });
 
 /**
- * Shared format pipeline: timestamps, error stacks, and custom printf.
+ * Shared format pipeline: attaches timestamps, includes error stacks, and applies custom printf.
  */
 const commonFormat = combine(
   timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
@@ -43,14 +48,15 @@ const commonFormat = combine(
 );
 
 /**
- * Console transport with colorized output.
+ * Console transport with colourised output for readability.
  */
 const consoleTransport = new winston.transports.Console({
   format: combine(colorize({ all: true }), commonFormat),
 });
 
 /**
- * Error logs: daily rotation, 14-day retention, static symlink 'latest.log'.
+ * Daily rotating file transport for error-level logs.
+ * Retains 14 days and writes a symlink 'latest.log' to the most recent file.
  */
 const errorRotateTransport = new DailyRotateFile({
   level: "error",
@@ -63,10 +69,11 @@ const errorRotateTransport = new DailyRotateFile({
 });
 
 /**
- * Combined logs: daily rotation, 30-day retention, static symlink 'latest.log'.
+ * Daily rotating file transport for combined logs at configured level.
+ * Retains 30 days and writes a symlink 'latest.log' at logsDir.
  */
 const combinedRotateTransport = new DailyRotateFile({
-  level: process.env.LOG_LEVEL || "info",
+  level: getRequired("LOG_LEVEL") || "info",
   dirname: logsDir,
   filename: "combined-%DATE%.log",
   datePattern: "YYYY-MM-DD",
@@ -76,10 +83,11 @@ const combinedRotateTransport = new DailyRotateFile({
 });
 
 /**
- * Singleton Winston logger instance for application-wide use.
+ * Singleton Winston logger instance used across the application.
+ * Exports console and file transports with daily rotation and error handling.
  */
 const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || "info",
+  level: getRequired("LOG_LEVEL") || "info",
   format: commonFormat,
   transports: [consoleTransport, errorRotateTransport, combinedRotateTransport],
 });

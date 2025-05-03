@@ -1,7 +1,9 @@
 /**
  * @file src/utils/cooldown.ts
  * @description Utilities for managing message cooldowns per guild or user, including configuration lookup,
- *              context key computation, and active cooldown tracking.
+ *   context key computation, and active cooldown tracking.
+ * @remarks
+ *   Cooldowns prevent spam by delaying bot responses in high-traffic scenarios.
  */
 
 import {
@@ -26,7 +28,7 @@ export function getCooldownConfig(guildId: string | null): GuildCooldownConfig {
  * Compute the context key used to track cooldowns.
  * Uses per-user keys if enabled or in DMs; otherwise shares the guild key.
  *
- * @param guildId - The ID of the guild, or null for DMs.
+ * @param guildId - The ID of the guild, or null for direct messages.
  * @param userId  - The ID of the user.
  * @returns A string key for looking up active cooldowns.
  */
@@ -40,6 +42,7 @@ export function getCooldownContext(
 
 /**
  * Tracks which context keys currently have an active cooldown.
+ * Stored as a Set of context keys.
  */
 const activeCooldowns = new Set<string>();
 
@@ -57,7 +60,7 @@ export function isCooldownActive(contextKey: string): boolean {
  * Starts a cooldown timer for the given guild/user combination.
  * No-op if cooldowns are disabled or already active.
  *
- * @param guildId - The ID of the guild, or null for DMs.
+ * @param guildId - The ID of the guild, or null for direct messages.
  * @param userId  - The ID of the user.
  */
 export function manageCooldown(guildId: string | null, userId: string): void {
@@ -75,6 +78,6 @@ export function manageCooldown(guildId: string | null, userId: string): void {
 
 /**
  * A global flag indicating whether cooldowns are enabled by default.
- * Useful for tests or environments where you want to disable cooldown logic.
+ * Useful for tests or environments where cooldown logic should be disabled.
  */
 export const useCooldown = defaultCooldownConfig.useCooldown;
