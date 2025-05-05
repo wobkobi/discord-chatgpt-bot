@@ -19,6 +19,7 @@ import { GiphyFetch } from "@giphy/js-fetch-api";
 import { Message } from "discord.js";
 import fetch from "node-fetch";
 import { stripQuery } from "./discordHelpers.js";
+import sanitizeHtml from "sanitize-html";
 import { getRequired } from "./env.js";
 import logger from "./logger.js";
 
@@ -361,7 +362,7 @@ async function handleTwitter(link: string, blocks: Block[]): Promise<void> {
     const text =
       html
         .match(/<p[^>]*>(.*?)<\/p>/i)?.[1]
-        ?.replace(/<[^>]+>/g, "")
+        ?.let((htmlContent) => sanitizeHtml(htmlContent, { allowedTags: [], allowedAttributes: {} }))
         .trim() || link;
     blocks.push({ type: "text", text });
     logger.debug(`[urlExtractor] Tweet text added: ${text}`);
