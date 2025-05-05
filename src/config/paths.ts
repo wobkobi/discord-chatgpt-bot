@@ -2,10 +2,9 @@
  * @file src/config/paths.ts
  * @description Centralised definitions of all filesystem paths used by the bot.
  * @remarks
- *   Keeps a single source of truth for data storage and log directories so they
- *   can be relocated simply by editing these constants.
+ *   Provides a single source of truth for data storage and log directories.
+ *   Constants are logged at startup for debug tracing.
  */
-
 import { join } from "path";
 
 /**
@@ -14,17 +13,17 @@ import { join } from "path";
 export const DATA_DIR = join(process.cwd(), "data");
 
 /**
- * Sub‑directory for LaTeX renderer outputs (SVG, PNG, JPG).
+ * Sub-directory for LaTeX renderer outputs (SVG, PNG, JPG).
  */
 export const OUTPUT_DIR = join(DATA_DIR, "output");
 
 /**
- * Filepath for persisting per‑guild cooldown configuration.
+ * Filepath for persisting per-guild cooldown configuration.
  */
 export const CONFIG_FILE = join(DATA_DIR, "guildCooldownConfigs.json");
 
 /**
- * Directory for storing long‑term memory entries for regular users.
+ * Directory for storing long-term memory entries for regular users.
  */
 export const USER_MEM_DIR = join(DATA_DIR, "memory", "user");
 
@@ -46,6 +45,6 @@ export const CONV_DIR = join(DATA_DIR, "conversations");
 export const LOGS_DIR = join(process.cwd(), "logs");
 
 /**
- * Sub‑directory under LOGS_DIR for error‑level logs with daily rotation.
+ * Sub-directory under LOGS_DIR for error-level logs with daily rotation.
  */
 export const LOGS_ERROR_DIR = join(LOGS_DIR, "error");

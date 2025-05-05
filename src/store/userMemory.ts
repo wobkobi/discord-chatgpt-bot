@@ -2,7 +2,8 @@
  * @file src/memory/userMemory.ts
  * @description Manages long-term memory entries for regular users, stored in-memory and persisted to disk.
  * @remarks
- *   Memory is cached for fast access and saved to a JSON store to survive restarts.
+ *   Provides fast in-memory access and persists to a JSON store to survive restarts.
+ *   Uses debug logging for tracing load, clear, update, and save operations.
  */
 
 import { GeneralMemoryEntry } from "@/types";
@@ -15,44 +16,53 @@ import logger from "../utils/logger.js";
 export const userMemory = new Map<string, GeneralMemoryEntry[]>();
 
 /**
- * Initialise the in-memory user memory cache by clearing all entries.
+ * Clears and initialises the in-memory user memory cache.
  *
  * @async
- * @returns A promise that resolves once the cache has been cleared.
+ * @returns Promise<void> that resolves once the cache has been cleared.
  */
 export async function initialiseUserMemory(): Promise<void> {
+  logger.debug("[userMemory] initialiseUserMemory invoked");
   userMemory.clear();
-  logger.info("🗂️ User memory cache cleared");
+  logger.info("🗂️  User memory cache cleared");
 }
 
 /**
- * Append a new memory entry for a user, update the in-memory cache, and persist to disk.
+ * Appends a new memory entry for a user, updates the in-memory cache, and persists to disk.
  *
  * @async
  * @param userId - Discord user ID for whom to store the memory entry.
  * @param entry - The memory entry to append, containing timestamp and content.
- * @returns A promise that resolves when the memory has been saved.
+ * @returns Promise<void> that resolves once the memory has been saved.
  */
 export async function updateUserMemory(
   userId: string,
   entry: GeneralMemoryEntry
 ): Promise<void> {
+  logger.debug(
+    `[userMemory] updateUserMemory invoked for userId=${userId}, timestamp=${entry.timestamp}`
+  );
   try {
-    // Load existing entries from disk (or empty array if none)
+    logger.debug(`[userMemory] Loading existing entries for userId=${userId}`);
     const existingEntries = await loadUserMemory(userId);
+    logger.debug(
+      `[userMemory] Retrieved ${existingEntries.length} existing entries`
+    );
 
-    // Append the new entry to the cache
     const updatedEntries = existingEntries.concat(entry);
     userMemory.set(userId, updatedEntries);
-
-    // Persist the updated entries to disk
-    await saveUserMemory(userId, updatedEntries);
     logger.debug(
-      `📥 User memory for ${userId} updated (total ${updatedEntries.length} entries)`
+      `[userMemory] Cache updated for userId=${userId}, total entries=${updatedEntries.length}`
     );
+
+    logger.debug(
+      `[userMemory] Persisting ${updatedEntries.length} entries for userId=${userId}`
+    );
+    await saveUserMemory(userId, updatedEntries);
+    logger.info(`📥 User memory persisted for user ${userId}`);
   } catch (err) {
     logger.error(
-      `⚠️ Failed to update user memory for ${userId}:`,
+      `[userMemory] Failed to update user memory for userId=${userId}:`,
       err instanceof Error ? err.stack : err
     );
   }

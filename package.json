@@ -23,6 +23,7 @@
     "mathjax-full": "^3.2.2",
     "node-fetch": "^3.3.2",
     "openai": "^4.85.1",
+    "sanitize-html": "^2.16.0",
     "sharp": "^0.34.1",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0"
@@ -32,6 +33,7 @@
     "@eslint/js": "^9.20.0",
     "@types/luxon": "^3.4.2",
     "@types/node": "^22.13.4",
+    "@types/sanitize-html": "^2.15.0",
     "@typescript-eslint/eslint-plugin": "^8.24.0",
     "@typescript-eslint/parser": "^8.24.0",
     "eslint": "^9.20.1",

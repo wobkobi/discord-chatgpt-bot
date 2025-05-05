@@ -4,6 +4,7 @@
  *   context key computation, and active cooldown tracking.
  * @remarks
  *   Cooldowns prevent spam by delaying bot responses in high-traffic scenarios.
+ *   Provides detailed debug logging to trace the cooldown flow using logger.debug.
  */
 
 import {
@@ -11,6 +12,7 @@ import {
   GuildCooldownConfig,
   guildCooldownConfigs,
 } from "../config/index.js";
+import logger from "../utils/logger.js";
 
 /**
  * Retrieve the effective cooldown configuration for a given guild or direct message.
@@ -20,8 +22,16 @@ import {
  * @returns The cooldown settings to apply.
  */
 export function getCooldownConfig(guildId: string | null): GuildCooldownConfig {
-  if (!guildId) return defaultCooldownConfig;
-  return guildCooldownConfigs.get(guildId) ?? defaultCooldownConfig;
+  logger.debug(`[cooldown] getCooldownConfig invoked with guildId=${guildId}`);
+  if (!guildId) {
+    logger.debug("[cooldown] No guildId provided; using default config");
+    return defaultCooldownConfig;
+  }
+  const config = guildCooldownConfigs.get(guildId) ?? defaultCooldownConfig;
+  logger.debug(
+    `[cooldown] Using config for guildId=${guildId}: ${JSON.stringify(config)}`
+  );
+  return config;
 }
 
 /**
@@ -36,13 +46,17 @@ export function getCooldownContext(
   guildId: string | null,
   userId: string
 ): string {
+  logger.debug(
+    `[cooldown] getCooldownContext invoked with guildId=${guildId}, userId=${userId}`
+  );
   const { perUserCooldown } = getCooldownConfig(guildId);
-  return !guildId || perUserCooldown ? userId : guildId;
+  const contextKey = !guildId || perUserCooldown ? userId : guildId;
+  logger.debug(`[cooldown] Computed contextKey=${contextKey}`);
+  return contextKey;
 }
 
 /**
  * Tracks which context keys currently have an active cooldown.
- * Stored as a Set of context keys.
  */
 const activeCooldowns = new Set<string>();
 
@@ -50,10 +64,14 @@ const activeCooldowns = new Set<string>();
  * Check whether a cooldown is currently active for the given context key.
  *
  * @param contextKey - The key returned by `getCooldownContext`.
- * @returns True if the cooldown is still in effect, false otherwise.
+ * @returns True if the cooldown is still in effect; false otherwise.
  */
 export function isCooldownActive(contextKey: string): boolean {
-  return activeCooldowns.has(contextKey);
+  const active = activeCooldowns.has(contextKey);
+  logger.debug(
+    `[cooldown] isCooldownActive for contextKey=${contextKey}: ${active}`
+  );
+  return active;
 }
 
 /**
@@ -64,20 +82,35 @@ export function isCooldownActive(contextKey: string): boolean {
  * @param userId  - The ID of the user.
  */
 export function manageCooldown(guildId: string | null, userId: string): void {
+  logger.debug(
+    `[cooldown] manageCooldown invoked for guildId=${guildId}, userId=${userId}`
+  );
   const { useCooldown, cooldownTime } = getCooldownConfig(guildId);
-  if (!useCooldown) return;
+  if (!useCooldown) {
+    logger.debug("[cooldown] Cooldown feature disabled; skipping");
+    return;
+  }
 
   const contextKey = getCooldownContext(guildId, userId);
-  if (activeCooldowns.has(contextKey)) return;
+  if (activeCooldowns.has(contextKey)) {
+    logger.debug(
+      `[cooldown] Cooldown already active for contextKey=${contextKey}`
+    );
+    return;
+  }
 
   activeCooldowns.add(contextKey);
+  logger.debug(
+    `[cooldown] Started cooldown for contextKey=${contextKey} (${cooldownTime}s)`
+  );
   setTimeout(() => {
     activeCooldowns.delete(contextKey);
+    logger.debug(`[cooldown] Cleared cooldown for contextKey=${contextKey}`);
   }, cooldownTime * 1000);
 }
 
 /**
- * A global flag indicating whether cooldowns are enabled by default.
+ * Global flag indicating whether cooldowns are enabled by default.
  * Useful for tests or environments where cooldown logic should be disabled.
  */
 export const useCooldown = defaultCooldownConfig.useCooldown;

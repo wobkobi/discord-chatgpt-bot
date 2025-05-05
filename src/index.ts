@@ -5,6 +5,7 @@
  * @remarks
  *   Dynamically discovers and registers slash commands, initialises memory stores,
  *   sets up message and interaction handlers, and manages graceful shutdown.
+ *   Includes debug logs via logger.debug for tracing startup steps.
  */
 
 import { REST } from "@discordjs/rest";
@@ -29,11 +30,9 @@ import { initialiseUserMemory } from "./store/userMemory.js";
 import { getRequired } from "./utils/env.js";
 import logger from "./utils/logger.js";
 
-// Determine if running compiled JS or TS source
+// Determine environment and command path
 const __filename = fileURLToPath(import.meta.url);
 const isRunningTS = __filename.endsWith(".ts");
-
-// Compute commands directory and file extension
 const buildCommandsPath = join(resolve(), "build", "commands");
 const commandsPath =
   !isRunningTS && existsSync(buildCommandsPath)
@@ -71,7 +70,7 @@ export function isBotReady(): boolean {
   return botReady;
 }
 
-// Create Discord client with required intents and partials
+// Initialise Discord client
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -83,10 +82,7 @@ const client = new Client({
 });
 client.commands = new Collection<string, SlashCommandModule>();
 
-/**
- * Dynamically imports all command modules from the commands directory.
- * Logs warnings for invalid modules and errors for failed imports.
- */
+// Load slash commands dynamically
 (async () => {
   const files = readdirSync(commandsPath).filter((f) => f.endsWith(extension));
   await Promise.all(
