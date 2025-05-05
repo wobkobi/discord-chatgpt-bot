@@ -18,6 +18,7 @@ import { Block } from "@/types/index.js";
 import { GiphyFetch } from "@giphy/js-fetch-api";
 import { Message } from "discord.js";
 import fetch from "node-fetch";
+import sanitizeHtml from "sanitize-html";
 import { stripQuery } from "./discordHelpers.js";
 import { getRequired } from "./env.js";
 import logger from "./logger.js";
@@ -40,21 +41,6 @@ interface TenorPostsResponse {
 }
 
 logger.debug("[urlExtractor] Module initialised");
-
-/**
- * Escape HTML special characters to prevent injection.
- *
- * @param str – Raw string that may contain `<`, `>`, `&`, `"` or `'`.
- * @returns A string with those characters replaced by HTML entities.
- */
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 /**
  * Parses a Discord message and extracts structured Block inputs and leftover URLs.
@@ -374,11 +360,14 @@ async function handleTwitter(link: string, blocks: Block[]): Promise<void> {
       }
     }
 
-    const raw = html
-      .match(/<p[^>]*>(.*?)<\/p>/i)?.[1]
-      ?.replace(/<[^>]+>/g, "")
-      .trim();
-    const text = raw ? escapeHtml(raw) : link;
+    const match = html.match(/<p[^>]*>(.*?)<\/p>/i);
+    let text = link;
+    if (match && match[1]) {
+      text = sanitizeHtml(match[1], {
+        allowedTags: [],
+        allowedAttributes: {},
+      }).trim();
+    }
     blocks.push({ type: "text", text });
     logger.debug(`[urlExtractor] Tweet text added: ${text}`);
   } catch (err) {
