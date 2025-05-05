@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Compat wrapper to merge ESLint’s recommended configs
 const compat = new FlatCompat({
   baseDirectory: __dirname,
   recommendedConfig: js.configs.recommended,
@@ -18,25 +19,25 @@ const compat = new FlatCompat({
 });
 
 export default [
-  // 1) Ignore these files/globs entirely
+  // 1) Files/globs to ignore entirely
   { ignores: ["**/node_modules/**", "build/**", "dist/**"] },
 
-  // 2) Bring in all of ESLint’s, TypeScript-ESLint’s, and Prettier’s recommended rules
+  // 2) Bring in ESLint, TypeScript‑ESLint and Prettier recommended rules
   ...compat.extends(
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended",
     "prettier"
   ),
 
-  // 3) Then your overrides
+  // 3) Our project‑specific overrides
   {
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 2020,
       sourceType: "module",
       globals: {
-        ...globals.browser, // Use globals for browser environments
-        ...globals.node, // Use globals for node environments
+        ...globals.browser, // browser global vars (window, etc.)
+        ...globals.node, // Node.js global vars (process, Buffer, etc.)
       },
     },
 
@@ -46,6 +47,7 @@ export default [
     },
 
     settings: {
+      // Resolve imports for these extensions
       "import/resolver": {
         node: {
           extensions: [".js", ".jsx", ".ts", ".tsx", ".mjs"],
@@ -54,10 +56,10 @@ export default [
     },
 
     rules: {
-      // No unused vars
+      // Treat any unused variable as an error
       "@typescript-eslint/no-unused-vars": "error",
 
-      // Enforce Prettier formatting
+      // Enforce Prettier formatting as ESLint errors
       "prettier/prettier": [
         "error",
         {
@@ -65,10 +67,10 @@ export default [
         },
       ],
 
-      // Windows-style line endings
+      // Ensure Windows‑style line endings
       "linebreak-style": ["error", "windows"],
 
-      // Prefer type-alias over interface or vice-versa
+      // Consistent choice between `type` vs `interface`
       "@typescript-eslint/consistent-type-definitions": "error",
     },
   },
