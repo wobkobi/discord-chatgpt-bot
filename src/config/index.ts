@@ -92,7 +92,7 @@ export async function saveGuildCooldownConfigs(): Promise<void> {
     // Write JSON with 2-space indentation for readability
     await fs.writeFile(CONFIG_FILE, JSON.stringify(toSave, null, 2), "utf-8");
     logger.info("✅ Saved guild cooldown configurations to disk");
-  } catch (err: unknown) {
+  } catch (err) {
     logger.error("❌ Failed to save guild cooldown configs:", err);
   }
 }

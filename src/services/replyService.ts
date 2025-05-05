@@ -6,6 +6,7 @@
  * @remarks
  *   Utilises persona and memory stores, applies Discord markdown formatting, and handles
  *   model errors (quota and model-not-found) with appropriate logging and fallback messages.
+ *   Includes debug logs via `logger.debug` for tracing each step.
  */
 
 import { Block, ChatMessage } from "@/types";
@@ -144,13 +145,12 @@ export async function generateReply(
   };
   messages.push(blockMessage as unknown as ChatCompletionMessageParam);
 
-  logger.info(`📝 Prompt → model=${modelName}, blocks=${userBlocks.length}`);
-  logger.debug(`Prompt context: ${JSON.stringify(messages, null, 2)}`);
-
   // Invoke OpenAI
-  let aiContent: string;
+  let content: string;
+  let res: Awaited<ReturnType<OpenAI["chat"]["completions"]["create"]>>;
   try {
-    const res = await openai.chat.completions.create({
+    logger.debug("[replyService] Sending chat completion request");
+    res = await openai.chat.completions.create({
       model: modelName,
       messages,
       temperature: 0.7,
@@ -160,8 +160,8 @@ export async function generateReply(
       max_tokens: 512,
       user: userId,
     });
-    aiContent = res.choices[0]?.message.content?.trim() || "";
-    if (!aiContent) throw new Error("Empty AI response");
+    content = res.choices[0]?.message.content?.trim() || "";
+    if (!content) throw new Error("Empty AI response");
     logger.debug("[replyService] Received AI response");
   } catch (err) {
     if (useFT && err instanceof APIError && err.code === "model_not_found") {
@@ -175,9 +175,16 @@ export async function generateReply(
     throw err;
   }
 
+  // Log token usage for prompt vs completion
+  const { usage } = res;
+  logger.info(
+    `📝 Prompt → model=${modelName} | prompt tokens: ${usage?.prompt_tokens ?? "?"}, completion tokens: ${usage?.completion_tokens ?? "?"}`
+  );
+  logger.debug(`Prompt context: ${JSON.stringify(messages, null, 2)}`);
+
   // Render maths to PNG
   const mathBuffers: Buffer[] = [];
-  for (const match of aiContent.matchAll(/\\\[(.+?)\\\]/g)) {
+  for (const match of content.matchAll(/\\\[(.+?)\\\]/g)) {
     try {
       const { buffer } = await renderMathToPng(match[1].trim());
       mathBuffers.push(buffer);
@@ -187,7 +194,7 @@ export async function generateReply(
   }
 
   // Clean reply text
-  let replyText = aiContent.replace(/\\\[(.+?)\\\]/g, "");
+  let replyText = content.replace(/\\\[(.+?)\\\]/g, "");
   replyText = replyText.replace(/(\r?\n){2,}/g, "\n").trim();
   logger.debug(`[replyService] Final reply text length=${replyText.length}`);
 
