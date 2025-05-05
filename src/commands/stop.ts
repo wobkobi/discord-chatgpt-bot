@@ -32,10 +32,14 @@ export const data = new SlashCommandBuilder()
 export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
+  logger.debug(`[stop] Command invoked by userId=${interaction.user.id}`);
+
   const ownerId = getRequired("OWNER_ID");
+  logger.debug(`[stop] Loaded ownerId=${ownerId}`);
 
   // Ensure owner is configured
   if (!ownerId) {
+    logger.debug("[stop] No OWNER_ID configured");
     await interaction.reply({
       content: "⚠️ Bot owner is not configured.",
       flags: MessageFlags.Ephemeral,
@@ -45,6 +49,7 @@ export async function execute(
 
   // Permission check: only the owner may invoke
   if (interaction.user.id !== ownerId) {
+    logger.debug(`[stop] Permission denied for userId=${interaction.user.id}`);
     await interaction.reply({
       content: "🚫 You are not allowed to shut me down.",
       flags: MessageFlags.Ephemeral,
@@ -52,20 +57,24 @@ export async function execute(
     return;
   }
 
+  logger.info(`[stop] Authorized shutdown by ownerId=${ownerId}`);
+
   // Acknowledge shutdown to the owner
   await interaction.reply({
     content: "🛑 Shutting down. Goodbye!",
     flags: MessageFlags.Ephemeral,
   });
+  logger.debug("[stop] Reply sent, scheduling shutdown sequence");
 
   // Delay to allow Discord to deliver the reply before destroying the client
   setTimeout(async () => {
+    logger.debug("[stop] Executing shutdown sequence");
     try {
       // Destroy the Discord client
       await interaction.client.destroy();
-      logger.info("Discord client destroyed, exiting process.");
+      logger.info("[stop] Discord client destroyed, exiting process.");
     } catch (err) {
-      logger.error("Error during client.destroy():", err);
+      logger.error("[stop] Error during client.destroy():", err);
     } finally {
       // Terminate the Node.js process
       process.exit(0);

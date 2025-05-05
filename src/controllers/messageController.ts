@@ -1,9 +1,10 @@
 /**
  * @file src/controllers/messageController.ts
- * @description Handles incoming Discord messages: applies cooldowns, manages conversation threads,
+ * @description Handles inbound Discord messages: applies cooldowns, manages conversation threads,
  *   updates memory, invokes AI reply generation, and persists conversation state.
  * @remarks
- *   Implements mention and interjection logic, summarisation, URL/file extraction, and emoji replacement.
+ *   Implements mention and interjection logic, summarisation, URL/file extraction, emoji replacement,
+ *   and ensures smooth multi-turn dialogue management.
  */
 
 import { Block, ConversationContext } from "@/types";
@@ -40,25 +41,39 @@ const histories = new Map<string, Map<string, ConversationContext>>();
 const idMaps = new Map<string, Map<string, string>>();
 
 /**
- * Creates a handler function for processing new Discord messages.
+ * Creates a handler for processing new Discord messages.
  * Applies ignore rules, cooldowns, memory updates, threading, summarisation,
  * input extraction, AI invocation, and persistence.
  *
  * @param openai - The OpenAI client instance used for generating replies.
  * @param client - The Discord client instance.
- * @returns A function that handles a single Message event.
+ * @returns Handler function for 'messageCreate' events.
  */
 export async function handleNewMessage(
   openai: OpenAI,
   client: Client
 ): Promise<(message: Message) => Promise<void>> {
+  logger.debug("[messageController] Initialising new message handler");
   return async (message: Message): Promise<void> => {
-    // Ignore bot messages, mass mentions, or if bot not initialised
-    if (message.author.bot) return;
-    if (message.guild && message.mentions.everyone) return;
-    if (!isBotReady()) return;
+    logger.debug(
+      `[messageController] Received message id=${message.id} from userId=${message.author.id}`
+    );
 
-    // ─── Mention / Interjection logic ──────────────────────────────────────────
+    // Ignore bot messages, mass mentions, or if bot not initialised
+    if (message.author.bot) {
+      logger.debug("[messageController] Ignoring bot message");
+      return;
+    }
+    if (message.guild && message.mentions.everyone) {
+      logger.debug("[messageController] Ignoring @everyone mention");
+      return;
+    }
+    if (!isBotReady()) {
+      logger.debug("[messageController] Bot not ready yet");
+      return;
+    }
+
+    // Mention and random interjection logic
     const mentioned = message.guild
       ? message.mentions.has(client.user!.id)
       : true;
@@ -70,43 +85,55 @@ export async function handleNewMessage(
         .slice(1, 6);
       const botInLastFive = lastFive.some((m) => m.author.bot);
       if (!botInLastFive && Math.random() < 1 / 50) interject = true;
+      logger.debug(`[messageController] Interject=${interject}`);
     }
-    if (message.guild && !mentioned && !interject) return;
+    if (message.guild && !mentioned && !interject) {
+      logger.debug("[messageController] No mention or interjection; skipping");
+      return;
+    }
 
     // Show typing indicator
     if (message.channel.isTextBased() && "sendTyping" in message.channel) {
+      logger.debug("[messageController] Sending typing indicator");
       message.channel.sendTyping().catch(() => {});
     }
 
-    //  Memory & Cooldowns
+    // Memory & cooldowns
     const userId = message.author.id;
     const guildId = message.guild?.id || null;
+    logger.debug(`[messageController] userId=${userId}, guildId=${guildId}`);
 
-    // Track clone user messages separately
     if (userId === cloneUserId) {
+      logger.debug("[messageController] Updating clone memory");
       updateCloneMemory(userId, {
         timestamp: Date.now(),
         content: message.content,
       });
     }
 
-    // Enforce cooldown if active
     const cdKey = getCooldownContext(guildId, userId);
     if (useCooldown && isCooldownActive(cdKey)) {
       const { cooldownTime } = getCooldownConfig(guildId);
+      logger.debug("[messageController] Cooldown active; notifying user");
       const warn = await message.reply(
         `⏳ Cooldown: ${cooldownTime.toFixed(2)}s`
       );
       setTimeout(() => warn.delete().catch(() => {}), cooldownTime * 1000);
       return;
     }
-    if (useCooldown) manageCooldown(guildId, userId);
+    if (useCooldown) {
+      logger.debug("[messageController] Managing cooldown");
+      manageCooldown(guildId, userId);
+    }
 
-    // Threading & History
+    // Threading & history
     const contextKey = guildId || userId;
     if (!histories.has(contextKey)) {
       histories.set(contextKey, new Map());
       idMaps.set(contextKey, new Map());
+      logger.debug(
+        `[messageController] Initialized history for context=${contextKey}`
+      );
     }
     const convIds = idMaps.get(contextKey)!;
     const replyToId = message.reference?.messageId;
@@ -115,34 +142,47 @@ export async function handleNewMessage(
         ? convIds.get(replyToId)!
         : `${message.channel.id}-${message.id}`;
     convIds.set(message.id, threadId);
+    logger.debug(`[messageController] Thread ID=${threadId}`);
 
     const convMap = histories.get(contextKey)!;
-    if (!convMap.has(threadId)) convMap.set(threadId, { messages: new Map() });
+    if (!convMap.has(threadId)) {
+      convMap.set(threadId, { messages: new Map() });
+      logger.debug("[messageController] Started new conversation context");
+    }
     const conversation = convMap.get(threadId)!;
     conversation.messages.set(
       message.id,
       createChatMessage(message, "user", client.user?.username)
     );
 
-    // Fetch recent channel history for context
+    // Fetch recent channel history
     let channelHistory: string | undefined;
     if (message.guild) {
       try {
+        logger.debug("[messageController] Fetching recent channel history");
         const fetched = await message.channel.messages.fetch({ limit: 50 });
         channelHistory = Array.from(fetched.values())
           .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
           .map((m) => `${m.author.username}: ${m.content}`)
           .join("\n");
       } catch (err) {
-        logger.error("Failed to fetch channel history:", err);
+        logger.error(
+          "[messageController] Failed to fetch channel history:",
+          err
+        );
       }
     }
 
-    // ─── Input Extraction ──────────────────────────────────────────────────────
+    // Input extraction
+    logger.debug("[messageController] Extracting inputs");
     const { blocks, genericUrls } = await extractInputs(message);
+    logger.debug(
+      `[messageController] Extracted ${blocks.length} blocks and ${genericUrls.length} URLs`
+    );
 
-    // ─── Summarise if too long ─────────────────────────────────────────────────
+    // Summarise if too long
     if (conversation.messages.size >= MESSAGE_LIMIT) {
+      logger.debug("[messageController] MESSAGE_LIMIT reached; summarising");
       const summary = summariseConversation(conversation);
       await updateUserMemory(userId, {
         timestamp: Date.now(),
@@ -151,17 +191,19 @@ export async function handleNewMessage(
       conversation.messages.clear();
     }
 
-    // ─── Build replyToInfo & call AI ──────────────────────────────────────────
+    // Prepare reply info
     let replyToInfo = `${message.author.username} said: "${message.content}"`;
     if (interject) {
-      // Indicate random interjection
       replyToInfo = `🔀 Random interjection — ${replyToInfo}`;
       blocks.unshift({
         type: "text",
         text: "[System instruction] This is a random interjection: respond as a spontaneous comment, not as an answer to a question.",
       } as Block);
+      logger.debug("[messageController] Added interjection system instruction");
     }
 
+    // Generate and send reply
+    logger.debug("[messageController] Generating AI reply");
     const { text, mathBuffers } = await generateReply(
       conversation.messages,
       message.id,
@@ -172,29 +214,34 @@ export async function handleNewMessage(
       blocks,
       genericUrls
     );
+    logger.debug(
+      `[messageController] AI reply generated text length=${text.length}, maths buffers=${mathBuffers.length}`
+    );
 
-    // Convert math buffers to attachments
     const attachments = mathBuffers.map((buf, i) => ({
       attachment: buf,
       name: `math-${i}.png`,
     }));
 
-    // Replace emoji shortcodes and send reply
-    const out = message.guild
+    const output = message.guild
       ? replaceEmojiShortcodes(text, message.guild)
       : text;
-    const sent = await message.reply({ content: out, files: attachments });
+    logger.debug("[messageController] Sending reply to channel");
+    const sent = await message.reply({ content: output, files: attachments });
 
-    // Record AI reply and persist memory & conversations
+    // Record and persist
     conversation.messages.set(
       sent.id,
       createChatMessage(sent, "assistant", client.user?.username)
     );
+    logger.debug("[messageController] Recording assistant message");
     await updateUserMemory(userId, {
       timestamp: Date.now(),
       content: `Replied: ${text}`,
     });
+    logger.debug("[messageController] Updated user memory");
     await saveConversations(histories, idMaps);
+    logger.debug("[messageController] Saved conversations to disk");
   };
 }
 
@@ -202,11 +249,13 @@ export async function handleNewMessage(
  * Preloads stored conversations for each guild when the bot starts.
  *
  * @param client - The Discord client instance.
- * @returns A promise that resolves when all conversations are loaded.
+ * @returns Promise<void> that resolves once loading completes.
  */
 export async function run(client: Client): Promise<void> {
+  logger.debug("[messageController] Preloading conversations for all guilds");
   const guildIds = Array.from(client.guilds.cache.keys());
   await Promise.all(
     guildIds.map((g) => loadConversations(g, histories, idMaps))
   );
+  logger.info("✅ Preload complete");
 }

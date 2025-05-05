@@ -1,7 +1,9 @@
 /**
  * @file src/commands/setcooldown.ts
- * @description Slash command to configure the server's message cooldown settings,
- *   restricted to the bot owner or server administrators.
+ * @description Slash command to configure this server’s message cooldown settings.
+ *   Restricted to the bot owner or server administrators.
+ * @remarks
+ *   Validates permissions, applies new settings, and persists configuration.
  */
 import {
   ChatInputCommandInteraction,
@@ -22,13 +24,11 @@ const OWNER_ID = getRequired("OWNER_ID");
 /**
  * Slash command registration data for /setcooldown.
  * @param time - Cooldown duration in seconds (0 disables cooldown).
- * @param peruser - Whether to apply the cooldown on a per-user basis.
+ * @param peruser - Whether to apply the cooldown per user rather than globally.
  */
 export const data = new SlashCommandBuilder()
   .setName("setcooldown")
-  .setDescription(
-    "Configure this server’s message cooldown (owner or admin only)"
-  )
+  .setDescription("Configure this server’s message cooldown (owner/admin only)")
   .addNumberOption((opt) =>
     opt
       .setName("time")
@@ -44,22 +44,27 @@ export const data = new SlashCommandBuilder()
 
 /**
  * Executes the /setcooldown command.
- * Validates permissions, updates the guild's cooldown config, and persists changes.
- * @param interaction - The interaction context for the slash command.
- * @returns A promise that resolves when the reply is sent.
+ * @param interaction - The ChatInputCommandInteraction context.
+ * @returns Promise that resolves when the reply is sent.
  */
 export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
+  const userId = interaction.user.id;
+  logger.debug(`[setcooldown] Invoked by userId=${userId}`);
+
   try {
-    const userId = interaction.user.id;
     const isOwner = OWNER_ID === userId;
     const isAdmin = interaction.memberPermissions?.has(
       PermissionsBitField.Flags.Administrator
     );
+    logger.debug(
+      `[setcooldown] Permission check isOwner=${isOwner} isAdmin=${isAdmin}`
+    );
 
     // Permission check: only owner or admin may proceed
     if (!isOwner && !isAdmin) {
+      logger.debug(`[setcooldown] Permission denied for userId=${userId}`);
       await interaction.reply({
         content:
           "🚫 You must be a server admin or the bot owner to configure cooldown.",
@@ -71,12 +76,17 @@ export async function execute(
     // Retrieve options
     const time = interaction.options.getNumber("time", true);
     const perUser = interaction.options.getBoolean("peruser") ?? false;
+    logger.debug(
+      `[setcooldown] Options retrieved time=${time} perUser=${perUser}`
+    );
 
     // Ensure command is used in a guild
     const guildId = interaction.guild?.id;
+    logger.debug(`[setcooldown] Interaction occurred in guildId=${guildId}`);
     if (!guildId) {
+      logger.warn("[setcooldown] Command not in a guild context");
       await interaction.reply({
-        content: "❌ This command can only be used within a server.",
+        content: "❌ This command can only be used in a server.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -84,6 +94,7 @@ export async function execute(
 
     // Validate time argument
     if (time < 0) {
+      logger.debug(`[setcooldown] Invalid time=${time}`);
       await interaction.reply({
         content: "⏱️ Cooldown time must be zero or positive.",
         flags: MessageFlags.Ephemeral,
@@ -98,23 +109,29 @@ export async function execute(
       perUserCooldown: perUser,
     };
     guildCooldownConfigs.set(guildId, newConfig);
+    logger.debug(
+      `[setcooldown] Saving newConfig for guildId=${guildId}: ${JSON.stringify(
+        newConfig
+      )}`
+    );
     await saveGuildCooldownConfigs();
 
     logger.info(
-      `[setcooldown] Updated cooldown for guild ${guildId}: ${JSON.stringify(
+      `[setcooldown] New cooldown for guild ${guildId}: ${JSON.stringify(
         newConfig
       )}`
     );
 
     // Confirm update to user
     await interaction.reply({
-      content: `✅ Cooldown updated: **${time}s**, scope: **${
-        perUser ? "per user" : "global"
-      }**`,
+      content: `✅ Cooldown set to **${time}s** (${perUser ? "per user" : "global"})`,
       flags: MessageFlags.Ephemeral,
     });
+    logger.debug(
+      `[setcooldown] Reply sent to userId=${userId} in guildId=${guildId}`
+    );
   } catch (err) {
-    logger.error("[setcooldown] unexpected error:", err);
+    logger.error("[setcooldown] Unexpected error:", err);
     if (!interaction.replied) {
       await interaction.reply({
         content: "❌ An error occurred while updating cooldown.",

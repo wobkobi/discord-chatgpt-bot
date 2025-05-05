@@ -1,8 +1,11 @@
 /**
  * @file src/services/replyService.ts
- * @description Builds the AI response prompt from conversation history and multimodal blocks,
- *   invokes OpenAI for chat completion, renders LaTeX math to PNG buffers, and returns cleaned
- *   reply text along with any generated math images.
+ * @description Constructs the AI response prompt from conversation history and multimodal blocks,
+ *   invokes OpenAI for chat completion, renders LaTeX maths to PNG buffers, and returns cleaned
+ *   reply text along with any generated maths images.
+ * @remarks
+ *   Utilises persona and memory stores, applies Discord markdown formatting, and handles
+ *   model errors (quota and model-not-found) with appropriate logging and fallback messages.
  */
 
 import { Block, ChatMessage } from "@/types";
@@ -21,12 +24,12 @@ import {
 } from "./characterService.js";
 
 /**
- * A structured user message containing an array of multimodal blocks.
+ * Structured user message containing an array of multimodal blocks.
  */
 export interface ChatCompletionBlockMessage {
-  /** The role should always be 'user' for block messages. */
+  /** Role for block messages; always 'user'. */
   role: "user";
-  /** The sequence of content blocks (text, images, files). */
+  /** Sequence of content blocks (text, images, files). */
   content: Block[];
 }
 
@@ -41,8 +44,8 @@ export interface ChatCompletionBlockMessage {
  * @param channelHistory - Optional literal string of recent channel messages for additional context.
  * @param blocks - Pre-extracted multimodal Blocks from the user message.
  * @param genericUrls - Remaining URLs to include as text blocks.
- * @returns A promise resolving to an object with the cleaned reply text and array of PNG buffers for rendered math.
- * @throws Will rethrow unexpected OpenAI errors after handling quota and model-not-found cases.
+ * @returns Promise resolving to an object with the cleaned reply text and array of PNG buffers for rendered maths.
+ * @throws Rethrows unexpected OpenAI errors after handling quota and model-not-found cases.
  */
 export async function generateReply(
   convoHistory: Map<string, ChatMessage>,
@@ -54,17 +57,25 @@ export async function generateReply(
   blocks: Block[] = [],
   genericUrls: string[] = []
 ): Promise<{ text: string; mathBuffers: Buffer[] }> {
-  // Feature toggles from environment
+  logger.debug(
+    `[replyService] generateReply invoked for userId=${userId}, currentId=${currentId}`
+  );
+
+  // Feature toggles
   const useFT = getRequired("USE_FINE_TUNED_MODEL") === "true";
   const usePersona = getRequired("USE_PERSONA") === "true";
   const modelName = useFT ? getRequired("FINE_TUNED_MODEL_NAME")! : "gpt-4o";
+  logger.debug(
+    `[replyService] Configuration useFT=${useFT}, usePersona=${usePersona}, modelName=${modelName}`
+  );
 
-  // Build the system and user messages for OpenAI
+  // Assemble messages for OpenAI
   const messages: ChatCompletionMessageParam[] = [];
 
-  // Persona/system prompt
-  const persona = await getCharacterDescription(userId);
-  messages.push({ role: "system", content: persona });
+  // System persona prompt
+  const personaPrompt = await getCharacterDescription(userId);
+  messages.push({ role: "system", content: personaPrompt });
+  logger.debug("[replyService] Added system persona prompt");
 
   // Long-term or clone memory
   if (usePersona || useFT) {
@@ -75,23 +86,28 @@ export async function generateReply(
     if (memArr.length) {
       const prefix =
         userId === cloneUserId ? "Clone memory:" : "Long-term memory:";
-      messages.push({
-        role: "system",
-        content: prefix + "\n" + memArr.map((e) => e.content).join("\n"),
-      });
+      const content = prefix + "\n" + memArr.map((e) => e.content).join("\n");
+      messages.push({ role: "system", content });
+      logger.debug(`[replyService] Added memory block, count=${memArr.length}`);
     }
   }
 
-  // Optional context injections
-  if (replyToInfo) messages.push({ role: "system", content: replyToInfo });
-  if (channelHistory)
+  // Optional system injections
+  if (replyToInfo) {
+    messages.push({ role: "system", content: replyToInfo });
+    logger.debug("[replyService] Added replyToInfo");
+  }
+  if (channelHistory) {
     messages.push({
       role: "system",
       content: `Recent channel history:\n${channelHistory}`,
     });
+    logger.debug("[replyService] Added channelHistory");
+  }
   messages.push({ role: "system", content: markdownGuide });
+  logger.debug("[replyService] Added markdown guide");
 
-  // Assemble user blocks from history
+  // Reconstruct user conversation history blocks
   const userBlocks: Block[] = [];
   let cursor: string | undefined = currentId;
   while (cursor) {
@@ -108,14 +124,20 @@ export async function generateReply(
     }
     cursor = turn.replyToId;
   }
+  logger.debug(
+    `[replyService] Reconstructed user history blocks, count=${userBlocks.length}`
+  );
 
-  // Add new multimodal blocks and URLs
+  // Append new blocks and URLs
   userBlocks.push(...blocks);
   for (const url of genericUrls) {
     userBlocks.push({ type: "text", text: `[link] ${url}` });
   }
+  logger.debug(
+    `[replyService] Appended user multimodal blocks, total=${userBlocks.length}`
+  );
 
-  // Wrap in ChatCompletionBlockMessage
+  // Wrap in block message
   const blockMessage: ChatCompletionBlockMessage = {
     role: "user",
     content: userBlocks,
@@ -125,7 +147,7 @@ export async function generateReply(
   logger.info(`📝 Prompt → model=${modelName}, blocks=${userBlocks.length}`);
   logger.debug(`Prompt context: ${JSON.stringify(messages, null, 2)}`);
 
-  // Call OpenAI chat completion
+  // Invoke OpenAI
   let aiContent: string;
   try {
     const res = await openai.chat.completions.create({
@@ -140,32 +162,34 @@ export async function generateReply(
     });
     aiContent = res.choices[0]?.message.content?.trim() || "";
     if (!aiContent) throw new Error("Empty AI response");
-  } catch (err: unknown) {
+    logger.debug("[replyService] Received AI response");
+  } catch (err) {
     if (useFT && err instanceof APIError && err.code === "model_not_found") {
       logger.error(`Fine-tuned model not found: ${modelName}`);
       process.exit(1);
     }
-    logger.error("OpenAI error in generateReply:", err);
+    logger.error("[replyService] OpenAI error:", err);
     if (err instanceof APIError && err.code === "insufficient_quota") {
       return { text: "⚠️ The assistant is out of quota.", mathBuffers: [] };
     }
     throw err;
   }
 
-  // Render LaTeX math expressions to PNG buffers
+  // Render maths to PNG
   const mathBuffers: Buffer[] = [];
   for (const match of aiContent.matchAll(/\\\[(.+?)\\\]/g)) {
     try {
       const { buffer } = await renderMathToPng(match[1].trim());
       mathBuffers.push(buffer);
-    } catch (e) {
-      logger.warn("Math→PNG failed for:", match[1], e);
+    } catch (err) {
+      logger.warn("[replyService] Maths→PNG failed for:", match[1], err);
     }
   }
 
-  // Remove LaTeX markers and collapse blank lines
+  // Clean reply text
   let replyText = aiContent.replace(/\\\[(.+?)\\\]/g, "");
   replyText = replyText.replace(/(\r?\n){2,}/g, "\n").trim();
+  logger.debug(`[replyService] Final reply text length=${replyText.length}`);
 
   return { text: replyText, mathBuffers };
 }

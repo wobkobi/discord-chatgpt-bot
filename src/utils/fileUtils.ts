@@ -2,7 +2,8 @@
  * @file src/utils/fileUtils.ts
  * @description Handles encryption, directory management, and generic data persistence for memory and conversations.
  * @remarks
- *   Uses AES‑256‑GCM encryption for secure storage and manages JSON serialization in the data directory.
+ *   Uses AES-256-GCM encryption for secure storage and manages JSON serialization in the configured data directories.
+ *   Provides debug logging at each step via logger.debug to trace file operations and encryption flows.
  */
 
 import { ChatMessage, ConversationContext, GeneralMemoryEntry } from "@/types";
@@ -24,13 +25,16 @@ const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 
+logger.debug("[fileUtils] Module loaded");
+
 /**
- * Encrypt a plaintext string using AES‑256‑GCM with a key derived from the environment.
+ * Encrypt a plaintext string using AES-256-GCM with a key derived from the environment.
  *
  * @param plain - The plaintext to encrypt.
  * @returns The encrypted string, encoded as base64.
  */
 export function encrypt(plain: string): string {
+  logger.debug(`[fileUtils] encrypt invoked, plaintext length=${plain.length}`);
   const key = createHash("sha256")
     .update(getRequired("ENCRYPTION_KEY"))
     .digest();
@@ -43,16 +47,19 @@ export function encrypt(plain: string): string {
     cipher.final(),
   ]);
   const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, encrypted]).toString("base64");
+  const result = Buffer.concat([iv, tag, encrypted]).toString("base64");
+  logger.debug(`[fileUtils] encrypt output length=${result.length} (base64)`);
+  return result;
 }
 
 /**
- * Decrypt a base64‑encoded AES‑256‑GCM ciphertext string back to plaintext.
+ * Decrypt a base64-encoded AES-256-GCM ciphertext string back to plaintext.
  *
  * @param enc - The encrypted string in base64.
  * @returns The decrypted plaintext.
  */
 export function decrypt(enc: string): string {
+  logger.debug(`[fileUtils] decrypt invoked, ciphertext length=${enc.length}`);
   const data = Buffer.from(enc, "base64");
   const iv = data.subarray(0, IV_LENGTH);
   const tag = data.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
@@ -64,9 +71,12 @@ export function decrypt(enc: string): string {
     authTagLength: TAG_LENGTH,
   });
   decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(text), decipher.final()]).toString(
-    "utf8"
-  );
+  const plaintext = Buffer.concat([
+    decipher.update(text),
+    decipher.final(),
+  ]).toString("utf8");
+  logger.debug(`[fileUtils] decrypt output length=${plaintext.length}`);
+  return plaintext;
 }
 
 /**
@@ -75,17 +85,21 @@ export function decrypt(enc: string): string {
  * @param dir - The directory path to ensure.
  */
 export async function ensureDir(dir: string): Promise<void> {
+  logger.debug(`[fileUtils] ensureDir invoked for directory=${dir}`);
   try {
     if (!existsSync(dir)) {
       await fs.mkdir(dir, { recursive: true });
+      logger.debug(`[fileUtils] Created directory=${dir}`);
+    } else {
+      logger.debug(`[fileUtils] Directory already exists: ${dir}`);
     }
   } catch (err) {
-    logger.error(`Failed to ensure directory ${dir}:`, err);
+    logger.error(`[fileUtils] Failed to ensure directory ${dir}:`, err);
   }
 }
 
 /**
- * Generic save of JSON‑serializable data to a specified directory with encryption.
+ * Generic save of JSON-serializable data to a specified directory with encryption.
  *
  * @param baseDir - The base directory for storage.
  * @param id - Identifier used as the filename (without extension).
@@ -97,13 +111,22 @@ export async function saveData<T>(
   data: T
 ): Promise<void> {
   const filePath = join(baseDir, `${id}.json`);
+  logger.debug(
+    `[fileUtils] saveData invoked for id=${id}, filePath=${filePath}`
+  );
   await ensureDir(baseDir);
   const content = encrypt(JSON.stringify(data));
-  await fs.writeFile(filePath, content, "utf8");
+  logger.debug(`[fileUtils] Writing encrypted data to ${filePath}`);
+  try {
+    await fs.writeFile(filePath, content, "utf8");
+    logger.debug(`[fileUtils] Successfully wrote file ${filePath}`);
+  } catch (err) {
+    logger.error(`[fileUtils] Failed to write file ${filePath}:`, err);
+  }
 }
 
 /**
- * Generic load and decrypt of JSON‑serialized data, returning a fallback if not found or on error.
+ * Generic load and decrypt of JSON-serialized data, returning a fallback if not found or on error.
  *
  * @param baseDir - The base directory for storage.
  * @param id - Identifier used as the filename (without extension).
@@ -116,16 +139,22 @@ export async function loadData<T>(
   fallback: T
 ): Promise<T> {
   const filePath = join(baseDir, `${id}.json`);
+  logger.debug(
+    `[fileUtils] loadData invoked for id=${id}, filePath=${filePath}`
+  );
   try {
     const enc = await fs.readFile(filePath, "utf8");
+    logger.debug(`[fileUtils] Read encrypted file, length=${enc.length}`);
     const json = decrypt(enc);
+    logger.debug(`[fileUtils] Decryption successful, parsing JSON`);
     return JSON.parse(json) as T;
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
     if (e.code === "ENOENT") {
+      logger.debug(`[fileUtils] No data file for id=${id}; returning fallback`);
       return fallback;
     }
-    logger.error(`Failed to load data ${id}:`, err);
+    logger.error(`[fileUtils] Failed to load data for id=${id}:`, err);
     // If decryption/authentication failed, remove the corrupt file
     if (
       err instanceof Error &&
@@ -134,9 +163,12 @@ export async function loadData<T>(
     ) {
       try {
         await fs.unlink(filePath);
-        logger.warn(`Deleted corrupt data file ${filePath}`);
+        logger.warn(`[fileUtils] Deleted corrupt data file ${filePath}`);
       } catch (unlinkErr) {
-        logger.error(`Failed to delete corrupt file ${filePath}:`, unlinkErr);
+        logger.error(
+          `[fileUtils] Failed to delete corrupt file ${filePath}:`,
+          unlinkErr
+        );
       }
     }
     return fallback;
@@ -163,14 +195,20 @@ export const loadCloneMemory = (uid: string): Promise<GeneralMemoryEntry[]> =>
 /**
  * Save all conversation threads for contexts to disk.
  *
- * @param histories - Map of context keys to conversation threads.
+ * @param histories - Map of context keys to conversation contexts.
  * @param idMaps - Map of context keys to message ID mappings.
  */
 export async function saveConversations(
   histories: Map<string, Map<string, ConversationContext>>,
   idMaps: Map<string, Map<string, string>>
 ): Promise<void> {
+  logger.debug(
+    `[fileUtils] saveConversations invoked for contexts=${histories.size}`
+  );
   for (const [ctx, convs] of histories.entries()) {
+    logger.debug(
+      `[fileUtils] Saving conversations for context=${ctx}, threads=${convs.size}`
+    );
     const out: Record<string, ChatMessage[]> = {};
     const map = idMaps.get(ctx)!;
     for (const [msgId, thread] of convs.entries()) {
@@ -178,12 +216,13 @@ export async function saveConversations(
     }
     await saveData(CONV_DIR, ctx, out);
   }
+  logger.debug("[fileUtils] saveConversations complete");
 }
 
 /**
  * Load all conversation threads for a given context key into memory maps.
  *
- * @param ctx - Context key (guild or channel‑user).
+ * @param ctx - Context key (guild or direct message key).
  * @param histories - Map to populate with conversation contexts.
  * @param idMaps - Map to populate with ID mappings.
  */
@@ -192,11 +231,18 @@ export async function loadConversations(
   histories: Map<string, Map<string, ConversationContext>>,
   idMaps: Map<string, Map<string, string>>
 ): Promise<void> {
+  logger.debug(`[fileUtils] loadConversations invoked for context=${ctx}`);
   let raw: Record<string, ChatMessage[]> = {};
   try {
     raw = await loadData(CONV_DIR, ctx, {});
+    logger.debug(
+      `[fileUtils] Loaded ${Object.keys(raw).length} threads for context=${ctx}`
+    );
   } catch (err) {
-    logger.error(`Failed to load conversations for context ${ctx}:`, err);
+    logger.error(
+      `[fileUtils] Failed to load conversations for context ${ctx}:`,
+      err
+    );
     raw = {};
   }
   const convMap = new Map<string, ConversationContext>();
@@ -211,4 +257,7 @@ export async function loadConversations(
   }
   histories.set(ctx, convMap);
   idMaps.set(ctx, idMap);
+  logger.debug(
+    `[fileUtils] loadConversations populated histories and idMaps for context=${ctx}`
+  );
 }

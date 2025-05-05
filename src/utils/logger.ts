@@ -4,6 +4,7 @@
  *   including daily rotation for combined logs and error-specific logs, and provides a static "latest.log" symlink.
  * @remarks
  *   Uses timestamped formatting, error stack inclusion, and emits an audible bell on error entries.
+ *   Emits debug logs to confirm initialization and transport setup.
  */
 
 import fs from "fs";
@@ -17,16 +18,16 @@ import { getRequired } from "./env.js";
 const { combine, timestamp, printf, colorize, errors } = winston.format;
 
 // Ensure log directories exist
-if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
-if (!fs.existsSync(LOGS_ERROR_DIR))
+if (!fs.existsSync(LOGS_DIR)) {
+  fs.mkdirSync(LOGS_DIR, { recursive: true });
+}
+if (!fs.existsSync(LOGS_ERROR_DIR)) {
   fs.mkdirSync(LOGS_ERROR_DIR, { recursive: true });
+}
 
 /**
  * Custom log format: includes timestamp, uppercase level, message or error stack,
- * and emits a bell character on errors.
- *
- * @param info - The log information object.
- * @returns A formatted log string, with audible bell on error level.
+ * and emits a bell character on error level.
  */
 const logFormat = printf((info: TransformableInfo) => {
   const bell = info.level === "error" ? "\u0007" : "";
