@@ -11,6 +11,7 @@ import { DateTime } from "luxon";
 import { createRequire } from "module";
 import path from "path";
 import { userMemory } from "../store/userMemory.js";
+import { getRequired } from "../utils/env.js";
 import logger from "../utils/logger.js";
 
 // Use createRequire to load JSON in ESM without import assertions
@@ -76,10 +77,11 @@ export async function getCharacterDescription(
   );
 
   // Start with the base persona description
-  let description = persona.baseDescription;
+  const usePersona = getRequired("USE_PERSONA") === "true";
+  let description = usePersona ? persona.baseDescription : "";
 
-  // Append style snippet if clone user
-  if (userId === cloneUserId) {
+  // Append style snippet if clone user AND persona enabled
+  if (usePersona && userId === cloneUserId) {
     const entries = userMemory.get(userId) || [];
     const snippet = entries.length
       ? entries
