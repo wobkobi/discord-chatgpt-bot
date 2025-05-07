@@ -24,11 +24,12 @@ export const userMemory = new Map<string, GeneralMemoryEntry[]>();
 export async function initialiseUserMemory(): Promise<void> {
   logger.debug("[userMemory] initialiseUserMemory invoked");
   userMemory.clear();
-  logger.info("🗂️  User memory cache cleared");
+  logger.info("🗂️ User memory cache cleared");
 }
 
 /**
- * Appends a new memory entry for a user, updates the in-memory cache, and persists to disk.
+ * Append a new memory entry for a user, update the in-memory cache, and persist to disk.
+ * Prevents duplicate consecutive entries.
  *
  * @async
  * @param userId - Discord user ID for whom to store the memory entry.
@@ -43,26 +44,31 @@ export async function updateUserMemory(
     `[userMemory] updateUserMemory invoked for userId=${userId}, timestamp=${entry.timestamp}`
   );
   try {
+    // Load existing entries from disk (or empty array if none)
     logger.debug(`[userMemory] Loading existing entries for userId=${userId}`);
     const existingEntries = await loadUserMemory(userId);
-    logger.debug(
-      `[userMemory] Retrieved ${existingEntries.length} existing entries`
-    );
 
+    // Skip if identical to the last entry
+    const last = existingEntries[existingEntries.length - 1];
+    if (last && last.content === entry.content) {
+      logger.debug(
+        `[userMemory] 🔁 Duplicate memory entry for ${userId}; skipping save`
+      );
+      return;
+    }
+
+    // Append the new entry to the cache
     const updatedEntries = existingEntries.concat(entry);
     userMemory.set(userId, updatedEntries);
-    logger.debug(
-      `[userMemory] Cache updated for userId=${userId}, total entries=${updatedEntries.length}`
-    );
 
-    logger.debug(
-      `[userMemory] Persisting ${updatedEntries.length} entries for userId=${userId}`
-    );
+    // Persist the updated entries to disk
     await saveUserMemory(userId, updatedEntries);
-    logger.info(`📥 User memory persisted for user ${userId}`);
+    logger.debug(
+      `[userMemory] 📥 User memory for ${userId} updated (total ${updatedEntries.length} entries)`
+    );
   } catch (err) {
     logger.error(
-      `[userMemory] Failed to update user memory for userId=${userId}:`,
+      `[userMemory] ⚠️ Failed to update user memory for ${userId}:`,
       err instanceof Error ? err.stack : err
     );
   }
