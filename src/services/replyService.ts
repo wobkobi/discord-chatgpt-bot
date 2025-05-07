@@ -157,14 +157,14 @@ export async function generateReply(
   while (cursor) {
     const turn = convoHistory.get(cursor);
     if (!turn) break;
-    const cleaned = sanitiseInput(applyDiscordMarkdownFormatting(turn.content));
     if (turn.role === "user") {
+      const cleaned = sanitiseInput(
+        applyDiscordMarkdownFormatting(turn.content)
+      );
       userBlocks.unshift({
         type: "text",
         text: `${turn.name} asked: ${cleaned}`,
       });
-    } else {
-      userBlocks.unshift({ type: "text", text: cleaned });
     }
     cursor = turn.replyToId;
   }
@@ -226,11 +226,10 @@ export async function generateReply(
 
   // Render maths to PNG
   const mathBuffers: Buffer[] = [];
-  const regex =
+  const formulaRegex =
     /```(?:latex)?\s*([\s\S]+?)\s*```|\\\[(.+?)\\\]|\\$\\$(.+?)\\$\\$/gs;
-  for (const match of contentText.matchAll(regex)) {
-    // match[1] if \[…\], or match[2] if $$…$$
-    const tex = (match[1] || match[2]).trim();
+  for (const match of contentText.matchAll(formulaRegex)) {
+    const tex = (match[1] || match[2] || match[3] || "").trim();
     try {
       const { buffer } = await renderMathToPng(tex);
       mathBuffers.push(buffer);
@@ -239,9 +238,11 @@ export async function generateReply(
     }
   }
 
-  // Clean reply text
-  let replyText = contentText.replace(/\\\[(.+?)\\\]/g, "");
-  replyText = replyText.replace(/(\r?\n){2,}/g, "\n").trim();
+  // Clean reply text using the same regex
+  const replyText = contentText
+    .replace(formulaRegex, "")
+    .replace(/(\r?\n){2,}/g, "\n")
+    .trim();
   logger.debug(`[replyService] Final reply text length=${replyText.length}`);
 
   return { text: replyText, mathBuffers };
