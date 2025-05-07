@@ -76,7 +76,7 @@ export async function handleNewMessage(
     // Mention and random interjection logic
     const mentioned = message.guild
       ? message.mentions.has(client.user!.id)
-      : false;
+      : true;
     let interject = false;
     if (message.guild && !mentioned) {
       const fetched = await message.channel.messages.fetch({ limit: 6 });
@@ -91,10 +91,6 @@ export async function handleNewMessage(
       logger.debug("[messageController] No mention or interjection; skipping");
       return;
     }
-
-    const cleanContent = message.content
-      .replace(new RegExp(`<@!?${client.user!.id}>`, "g"), "")
-      .trim();
 
     // Show typing indicator
     if (message.channel.isTextBased() && "sendTyping" in message.channel) {
@@ -111,7 +107,7 @@ export async function handleNewMessage(
       logger.debug("[messageController] Updating clone memory");
       updateCloneMemory(userId, {
         timestamp: Date.now(),
-        content: cleanContent,
+        content: message.content,
       });
     }
 
@@ -154,21 +150,27 @@ export async function handleNewMessage(
       logger.debug("[messageController] Started new conversation context");
     }
     const conversation = convMap.get(threadId)!;
-    const userChat = createChatMessage(message, "user", client.user?.username);
-    userChat.content = cleanContent;
-    conversation.messages.set(message.id, userChat);
+    conversation.messages.set(
+      message.id,
+      createChatMessage(message, "user", client.user?.username)
+    );
 
     // Fetch recent channel history
     let channelHistory: string | undefined;
-    try {
-      logger.debug("[messageController] Fetching recent channel history");
-      const fetched = await message.channel.messages.fetch({ limit: 50 });
-      channelHistory = Array.from(fetched.values())
-        .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
-        .map((m) => `${m.author.username}: ${m.content}`)
-        .join("\n");
-    } catch (err) {
-      logger.error("[messageController] Failed to fetch channel history:", err);
+    if (message.guild) {
+      try {
+        logger.debug("[messageController] Fetching recent channel history");
+        const fetched = await message.channel.messages.fetch({ limit: 50 });
+        channelHistory = Array.from(fetched.values())
+          .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
+          .map((m) => `${m.author.username}: ${m.content}`)
+          .join("\n");
+      } catch (err) {
+        logger.error(
+          "[messageController] Failed to fetch channel history:",
+          err
+        );
+      }
     }
 
     // Input extraction
@@ -190,19 +192,14 @@ export async function handleNewMessage(
     }
 
     // Prepare reply info
-    let replyToInfo: string | undefined;
+    let replyToInfo = `${message.author.username} said: "${message.content}"`;
     if (interject) {
       replyToInfo = `🔀 Random interjection — ${replyToInfo}`;
       blocks.unshift({
         type: "text",
         text: "[System instruction] This is a random interjection: respond as a spontaneous comment, not as an answer to a question.",
       } as Block);
-      replyToInfo = undefined;
       logger.debug("[messageController] Added interjection system instruction");
-    } else if (mentioned) {
-      replyToInfo = undefined;
-    } else {
-      replyToInfo = `${message.author.username} said: "${cleanContent}"`;
     }
 
     // Generate and send reply
