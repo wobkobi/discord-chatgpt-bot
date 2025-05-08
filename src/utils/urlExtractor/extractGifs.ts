@@ -12,9 +12,9 @@
 import { Block } from "@/types";
 import { GiphyFetch } from "@giphy/js-fetch-api";
 import { Message } from "discord.js";
-import { IMAGE_EXT_RE } from ".";
-import { stripQuery } from "../discordHelpers";
-import logger from "../logger";
+import { stripQuery } from "../discordHelpers.js";
+import logger from "../logger.js";
+import { IMAGE_EXT_RE } from "./index.js";
 
 // Types for Tenor API response
 interface TenorPost {

@@ -8,13 +8,13 @@
  */
 import { Block } from "@/types";
 import { Message } from "discord.js";
-import { stripQuery } from "../discordHelpers";
-import { getRequired } from "../env";
-import logger from "../logger";
-import { extractAttachments, extractStickers } from "./extractDiscord";
-import { extractGiphyGifs, extractTenorGifs } from "./extractGifs";
-import { extractInlineImages } from "./extractInlineImages";
-import { extractSocialEmbeds } from "./extractSocialEmbeds";
+import { stripQuery } from "../discordHelpers.js";
+import { getRequired } from "../env.js";
+import logger from "../logger.js";
+import { extractAttachments, extractStickers } from "./extractDiscord.js";
+import { extractGiphyGifs, extractTenorGifs } from "./extractGifs.js";
+import { extractInlineImages } from "./extractInlineImages.js";
+import { extractSocialEmbeds } from "./extractSocialEmbeds.js";
 
 /**
  * Recognises image file extensions for inline detection.

@@ -12,9 +12,9 @@
 import { Block } from "@/types";
 import { Message } from "discord.js";
 import sanitizeHtml from "sanitize-html";
-import { IMAGE_EXT_RE } from ".";
-import { stripQuery } from "../discordHelpers";
-import logger from "../logger";
+import { stripQuery } from "../discordHelpers.js";
+import logger from "../logger.js";
+import { IMAGE_EXT_RE } from "./index.js";
 
 // Regex patterns for supported providers
 const PROVIDERS = [

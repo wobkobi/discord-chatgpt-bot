@@ -10,8 +10,8 @@
 import { Block } from "@/types";
 import { Message } from "discord.js";
 import fetch from "node-fetch";
-import { stripQuery } from "../discordHelpers";
-import logger from "../logger";
+import { stripQuery } from "../discordHelpers.js";
+import logger from "../logger.js";
 
 /**
  * Captures Discord sticker images as image_url blocks.

@@ -10,8 +10,8 @@
  */
 import { Block } from "@/types";
 import { Message } from "discord.js";
-import { stripQuery } from "../discordHelpers";
-import logger from "../logger";
+import { stripQuery } from "../discordHelpers.js";
+import logger from "../logger.js";
 
 /**
  * Hosts allowed for direct inline image embedding.
