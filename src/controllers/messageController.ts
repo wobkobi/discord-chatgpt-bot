@@ -77,8 +77,10 @@ export async function handleNewMessage(
     // Mention and random interjection logic
     const mentioned = message.guild
       ? message.mentions.has(client.user!.id)
+
       : false;
     const key = `${message.channel.id}_${message.author.id}`;
+
     let interject = false;
     if (pendingInterjections.has(key)) {
       interject = true;
@@ -111,10 +113,6 @@ export async function handleNewMessage(
       return;
     }
 
-    const cleanContent = message.content
-      .replace(new RegExp(`<@!?${client.user!.id}>`, "g"), "")
-      .trim();
-
     // Show typing indicator
     if (message.channel.isTextBased() && "sendTyping" in message.channel) {
       logger.debug("[messageController] Sending typing indicator");
@@ -130,7 +128,7 @@ export async function handleNewMessage(
       logger.debug("[messageController] Updating clone memory");
       updateCloneMemory(userId, {
         timestamp: Date.now(),
-        content: cleanContent,
+        content: message.content,
       });
     }
 
@@ -173,47 +171,50 @@ export async function handleNewMessage(
       logger.debug("[messageController] Started new conversation context");
     }
     const conversation = convMap.get(threadId)!;
-    const userChat = createChatMessage(message, "user", client.user?.username);
-    userChat.content = cleanContent;
-    conversation.messages.set(message.id, userChat);
+    conversation.messages.set(
+      message.id,
+      createChatMessage(message, "user", client.user?.username)
+    );
 
     // Fetch recent channel history
     let channelHistory: string | undefined;
-    try {
-      logger.debug("[messageController] Fetching recent channel history");
-      const fetched = await message.channel.messages.fetch({ limit: 100 });
-      const sorted = Array.from(fetched.values()).sort(
-        (a, b) => b.createdTimestamp - a.createdTimestamp
+if (message.guild) {
+  try {
+    logger.debug("[messageController] Fetching recent channel history");
+    const fetched = await message.channel.messages.fetch({ limit: 100 });
+    const sorted = Array.from(fetched.values()).sort(
+      (a, b) => b.createdTimestamp - a.createdTimestamp
+    );
+
+    // Get the system locale once
+    const systemLocale = Intl.DateTimeFormat().resolvedOptions().locale;
+
+    let total = 0;
+    const lines: string[] = [];
+    for (const msg of sorted) {
+      const text = msg.content;
+      if (total >= 500) break;
+      total += text.length;
+
+      // Format time using system locale
+      const time = new Date(msg.createdTimestamp).toLocaleTimeString(
+        systemLocale,
+        {
+          hour12: false,
+          hour: "2-digit",
+          minute: "2-digit",
+        }
       );
 
-      // Get the system locale once
-      const systemLocale = Intl.DateTimeFormat().resolvedOptions().locale;
-
-      let total = 0;
-      const lines: string[] = [];
-      for (const msg of sorted) {
-        const text = msg.content;
-        if (total >= 500) break;
-        total += text.length;
-
-        // Format time using system locale
-        const time = new Date(msg.createdTimestamp).toLocaleTimeString(
-          systemLocale,
-          {
-            hour12: false,
-            hour: "2-digit",
-            minute: "2-digit",
-          }
-        );
-
-        lines.push(`[${time}] ${msg.author.username}: ${text}`);
-      }
-
-      // reverse to get oldest→newest
-      channelHistory = lines.reverse().join("\n");
-    } catch (err) {
-      logger.error("[messageController] Failed to fetch channel history:", err);
+      lines.push(`[${time}] ${msg.author.username}: ${text}`);
     }
+
+    // Reverse to get oldest → newest
+    channelHistory = lines.reverse().join("\n");
+  } catch (err) {
+    logger.error("[messageController] Failed to fetch channel history:", err);
+  }
+}
 
     // Input extraction
     logger.debug("[messageController] Extracting inputs");
@@ -234,19 +235,14 @@ export async function handleNewMessage(
     }
 
     // Prepare reply info
-    let replyToInfo: string | undefined;
+    let replyToInfo = `${message.author.username} said: "${message.content}"`;
     if (interject) {
       replyToInfo = `🔀 Random interjection — ${replyToInfo}`;
       blocks.unshift({
         type: "text",
         text: "[System instruction] This is a random interjection: respond as a spontaneous comment, not as an answer to a question.",
       } as Block);
-      replyToInfo = undefined;
       logger.debug("[messageController] Added interjection system instruction");
-    } else if (mentioned) {
-      replyToInfo = undefined;
-    } else {
-      replyToInfo = `${message.author.username} said: "${cleanContent}"`;
     }
 
     // Generate and send reply
