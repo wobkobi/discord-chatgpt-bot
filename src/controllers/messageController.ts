@@ -39,6 +39,7 @@ const MESSAGE_LIMIT = 10;
 // In-memory maps storing conversation histories and thread ID mappings per context
 const histories = new Map<string, Map<string, ConversationContext>>();
 const idMaps = new Map<string, Map<string, string>>();
+const pendingInterjections = new Map<string, boolean>();
 
 /**
  * Creates a handler for processing new Discord messages.
@@ -77,8 +78,13 @@ export async function handleNewMessage(
     const mentioned = message.guild
       ? message.mentions.has(client.user!.id)
       : false;
+    const key = `${message.channel.id}_${message.author.id}`;
     let interject = false;
-    if (message.guild && !mentioned) {
+    if (pendingInterjections.has(key)) {
+      interject = true;
+      pendingInterjections.delete(key);
+    }
+    if (!interject && message.guild && !mentioned) {
       const fetched = await message.channel.messages.fetch({ limit: 6 });
       const lastFive = Array.from(fetched.values())
         .sort((a, b) => b.createdTimestamp - a.createdTimestamp)
@@ -87,7 +93,20 @@ export async function handleNewMessage(
       if (!botInLastFive && Math.random() < 1 / 50) interject = true;
       logger.debug(`[messageController] Interject=${interject}`);
     }
+    if (
+      message.guild &&
+      interject &&
+      !pendingInterjections.has(key) &&
+      !pendingInterjections.delete(key)
+    ) {
+      pendingInterjections.set(key, true);
+      logger.debug(
+        `[messageController] Queued interjection for next message in ${key}`
+      );
+      return;
+    }
     if (message.guild && !mentioned && !interject) {
+      pendingInterjections.set(key, true);
       logger.debug("[messageController] No mention or interjection; skipping");
       return;
     }
