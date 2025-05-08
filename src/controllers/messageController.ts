@@ -29,7 +29,7 @@ import {
 } from "../utils/discordHelpers.js";
 import { loadConversations, saveConversations } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
-import { extractInputs } from "../utils/urlExtractor.js";
+import { extractInputs } from "../utils/urlExtractor/index.js";
 
 /**
  * Maximum number of messages in a thread before triggering summarisation.
@@ -39,6 +39,7 @@ const MESSAGE_LIMIT = 10;
 // In-memory maps storing conversation histories and thread ID mappings per context
 const histories = new Map<string, Map<string, ConversationContext>>();
 const idMaps = new Map<string, Map<string, string>>();
+const pendingInterjections = new Map<string, boolean>();
 
 /**
  * Creates a handler for processing new Discord messages.
@@ -76,9 +77,14 @@ export async function handleNewMessage(
     // Mention and random interjection logic
     const mentioned = message.guild
       ? message.mentions.has(client.user!.id)
-      : true;
+      : false;
+    const key = `${message.channel.id}_${message.author.id}`;
     let interject = false;
-    if (message.guild && !mentioned) {
+    if (pendingInterjections.has(key)) {
+      interject = true;
+      pendingInterjections.delete(key);
+    }
+    if (!interject && message.guild && !mentioned) {
       const fetched = await message.channel.messages.fetch({ limit: 6 });
       const lastFive = Array.from(fetched.values())
         .sort((a, b) => b.createdTimestamp - a.createdTimestamp)
@@ -87,10 +93,27 @@ export async function handleNewMessage(
       if (!botInLastFive && Math.random() < 1 / 50) interject = true;
       logger.debug(`[messageController] Interject=${interject}`);
     }
+    if (
+      message.guild &&
+      interject &&
+      !pendingInterjections.has(key) &&
+      !pendingInterjections.delete(key)
+    ) {
+      pendingInterjections.set(key, true);
+      logger.debug(
+        `[messageController] Queued interjection for next message in ${key}`
+      );
+      return;
+    }
     if (message.guild && !mentioned && !interject) {
+      pendingInterjections.set(key, true);
       logger.debug("[messageController] No mention or interjection; skipping");
       return;
     }
+
+    const cleanContent = message.content
+      .replace(new RegExp(`<@!?${client.user!.id}>`, "g"), "")
+      .trim();
 
     // Show typing indicator
     if (message.channel.isTextBased() && "sendTyping" in message.channel) {
@@ -107,7 +130,7 @@ export async function handleNewMessage(
       logger.debug("[messageController] Updating clone memory");
       updateCloneMemory(userId, {
         timestamp: Date.now(),
-        content: message.content,
+        content: cleanContent,
       });
     }
 
@@ -150,27 +173,46 @@ export async function handleNewMessage(
       logger.debug("[messageController] Started new conversation context");
     }
     const conversation = convMap.get(threadId)!;
-    conversation.messages.set(
-      message.id,
-      createChatMessage(message, "user", client.user?.username)
-    );
+    const userChat = createChatMessage(message, "user", client.user?.username);
+    userChat.content = cleanContent;
+    conversation.messages.set(message.id, userChat);
 
     // Fetch recent channel history
     let channelHistory: string | undefined;
-    if (message.guild) {
-      try {
-        logger.debug("[messageController] Fetching recent channel history");
-        const fetched = await message.channel.messages.fetch({ limit: 50 });
-        channelHistory = Array.from(fetched.values())
-          .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
-          .map((m) => `${m.author.username}: ${m.content}`)
-          .join("\n");
-      } catch (err) {
-        logger.error(
-          "[messageController] Failed to fetch channel history:",
-          err
+    try {
+      logger.debug("[messageController] Fetching recent channel history");
+      const fetched = await message.channel.messages.fetch({ limit: 100 });
+      const sorted = Array.from(fetched.values()).sort(
+        (a, b) => b.createdTimestamp - a.createdTimestamp
+      );
+
+      // Get the system locale once
+      const systemLocale = Intl.DateTimeFormat().resolvedOptions().locale;
+
+      let total = 0;
+      const lines: string[] = [];
+      for (const msg of sorted) {
+        const text = msg.content;
+        if (total >= 500) break;
+        total += text.length;
+
+        // Format time using system locale
+        const time = new Date(msg.createdTimestamp).toLocaleTimeString(
+          systemLocale,
+          {
+            hour12: false,
+            hour: "2-digit",
+            minute: "2-digit",
+          }
         );
+
+        lines.push(`[${time}] ${msg.author.username}: ${text}`);
       }
+
+      // reverse to get oldest→newest
+      channelHistory = lines.reverse().join("\n");
+    } catch (err) {
+      logger.error("[messageController] Failed to fetch channel history:", err);
     }
 
     // Input extraction
@@ -192,14 +234,19 @@ export async function handleNewMessage(
     }
 
     // Prepare reply info
-    let replyToInfo = `${message.author.username} said: "${message.content}"`;
+    let replyToInfo: string | undefined;
     if (interject) {
       replyToInfo = `🔀 Random interjection — ${replyToInfo}`;
       blocks.unshift({
         type: "text",
         text: "[System instruction] This is a random interjection: respond as a spontaneous comment, not as an answer to a question.",
       } as Block);
+      replyToInfo = undefined;
       logger.debug("[messageController] Added interjection system instruction");
+    } else if (mentioned) {
+      replyToInfo = undefined;
+    } else {
+      replyToInfo = `${message.author.username} said: "${cleanContent}"`;
     }
 
     // Generate and send reply

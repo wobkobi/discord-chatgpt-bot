@@ -24,7 +24,7 @@ import { generateReply } from "../services/replyService.js";
 import { updateUserMemory } from "../store/userMemory.js";
 import { getRequired } from "../utils/env.js";
 import logger from "../utils/logger.js";
-import { extractInputs } from "../utils/urlExtractor.js";
+import { extractInputs } from "../utils/urlExtractor/index.js";
 
 // Initialise OpenAI client with API key from environment
 const openai = new OpenAI({ apiKey: getRequired("OPENAI_API_KEY")! });
