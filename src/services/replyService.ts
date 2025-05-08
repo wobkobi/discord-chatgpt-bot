@@ -118,8 +118,9 @@ export async function generateReply(
     content: sanitiseInput(e.content),
   }));
   if (memArr.length) {
+    // Build a concise memory block, limiting to the most recent entries
     let prefix = userId === cloneUserId ? "Clone memory:" : "Long-term memory:";
-    const maxMemEntries = 10;
+    const maxMemEntries = 15;
     let entriesToShow = memArr;
     if (memArr.length > maxMemEntries) {
       const omitted = memArr.length - maxMemEntries;
@@ -127,9 +128,9 @@ export async function generateReply(
       prefix += `(Showing ${maxMemEntries} of ${memArr.length} entries; ${omitted} older entries omitted)`;
     }
     const memContent =
-      prefix + "" + entriesToShow.map((e) => e.content).join("");
-    // only push if we haven’t already injected this exact block
+      prefix + "\n" + entriesToShow.map((e) => e.content).join("\n");
 
+    // Only push if we haven’t already injected this exact block
     messages.push({ role: "system", content: memContent });
     logger.debug(
       `[replyService] Added memory block, count=${entriesToShow.length}/${memArr.length}`

@@ -29,7 +29,7 @@ import {
 } from "../utils/discordHelpers.js";
 import { loadConversations, saveConversations } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
-import { extractInputs } from "../utils/urlExtractor.js";
+import { extractInputs } from "../utils/urlExtractor/index.js";
 
 /**
  * Maximum number of messages in a thread before triggering summarisation.
@@ -181,11 +181,36 @@ export async function handleNewMessage(
     let channelHistory: string | undefined;
     try {
       logger.debug("[messageController] Fetching recent channel history");
-      const fetched = await message.channel.messages.fetch({ limit: 50 });
-      channelHistory = Array.from(fetched.values())
-        .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
-        .map((m) => `${m.author.username}: ${m.content}`)
-        .join("\n");
+      const fetched = await message.channel.messages.fetch({ limit: 100 });
+      const sorted = Array.from(fetched.values()).sort(
+        (a, b) => b.createdTimestamp - a.createdTimestamp
+      );
+
+      // Get the system locale once
+      const systemLocale = Intl.DateTimeFormat().resolvedOptions().locale;
+
+      let total = 0;
+      const lines: string[] = [];
+      for (const msg of sorted) {
+        const text = msg.content;
+        if (total >= 500) break;
+        total += text.length;
+
+        // Format time using system locale
+        const time = new Date(msg.createdTimestamp).toLocaleTimeString(
+          systemLocale,
+          {
+            hour12: false,
+            hour: "2-digit",
+            minute: "2-digit",
+          }
+        );
+
+        lines.push(`[${time}] ${msg.author.username}: ${text}`);
+      }
+
+      // reverse to get oldest→newest
+      channelHistory = lines.reverse().join("\n");
     } catch (err) {
       logger.error("[messageController] Failed to fetch channel history:", err);
     }
