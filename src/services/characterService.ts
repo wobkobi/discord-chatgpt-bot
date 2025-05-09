@@ -1,10 +1,12 @@
 /**
  * @file src/services/characterService.ts
- * @description Loads persona configuration and constructs the system prompt for the AI,
- *   including clone-specific styling, timestamp, and markdown guidelines.
+ * @description Loads persona configuration and builds system prompts and metadata
+ *   for the AI, including clone-specific styling and markdown guidelines.
  * @remarks
- *   Reads JSON persona data, handles TeX escaping, and assembles the full system prompt
- *   for OpenAI, with clone-only style snippets.
+ *   - Reads JSON persona data via ESM require
+ *   - Exposes:
+ *     • getCharacterDescription: base persona + clone style snippet (if clone)
+ *     • getSystemMetadata: timestamp + markdown guide (always injected)
  */
 
 import { DateTime } from "luxon";
@@ -17,12 +19,12 @@ import logger from "../utils/logger.js";
 const require = createRequire(import.meta.url);
 
 /**
- * Persona configuration shape loaded from JSON.
+ * Shape of persona configuration loaded from JSON.
  */
 interface PersonaConfig {
-  /** Unique ID for the clone user. */
+  /** Discord user ID of the clone to apply clone-specific styling. */
   cloneUserId: string;
-  /** Base system prompt describing the assistant persona. */
+  /** Base system prompt describing the assistant’s persona. */
   baseDescription: string;
   /** Guide for formatting markdown appropriately. */
   markdownGuide: string;
@@ -43,42 +45,25 @@ try {
 
 /** ID of the clone user, used to apply clone-specific behaviours. */
 export const cloneUserId = persona.cloneUserId;
-/** Markdown formatting guide appended to system prompts. */
+/** Markdown formatting guide from persona configuration. */
 export const markdownGuide = persona.markdownGuide;
 
 /**
- * Escape TeX sequences so they render correctly within Discord markdown by wrapping in backticks.
+ * Builds the persona description for system prompts.
+ * Includes the baseDescription and, if the user is the clone, a snippet of recent style.
  *
- * @param text - Raw text potentially containing TeX bracket sequences.
- * @returns Input text with TeX sequences escaped for Discord.
- */
-export function fixMathFormatting(text: string): string {
-  logger.debug("[characterService] fixMathFormatting invoked");
-  const escaped = text.replace(/\\\[[^\]]*\\\]/g, (m) => `\`${m}\``);
-  return escaped;
-}
-
-/**
- * Builds the full system prompt for OpenAI chat by combining:
- * - The base persona description
- * - Clone-only style snippet from recent memory, if applicable
- * - Current timestamp
- * - The markdown formatting guide
- *
- * @param userId - Optional Discord user ID to include clone-specific styling.
- * @returns Promise resolving to the fully constructed system prompt string.
+ * @param userId - Discord user ID; if it equals cloneUserId, includes a style snippet.
+ * @returns Fully assembled persona prompt (without timestamp or markdown guide).
  */
 export async function getCharacterDescription(
   userId?: string
 ): Promise<string> {
   logger.debug(
-    `[characterService] Generating system prompt for userId=${userId}`
+    `[characterService] Generating persona description for userId=${userId}`
   );
 
-  // Start with the base persona description
   let description = persona.baseDescription;
 
-  // Append style snippet if clone user
   if (userId === cloneUserId) {
     const entries = userMemory.get(userId) || [];
     const snippet = entries.length
@@ -92,21 +77,23 @@ export async function getCharacterDescription(
     description += `\n\nAs a clone, your recent style: ${snippet}`;
   }
 
-  // Append the current timestamp using the system's locale
+  return description;
+}
+
+/**
+ * Builds system metadata for prompts.
+ * Always includes the current timestamp and the markdown formatting guide.
+ *
+ * @returns String containing timestamp and markdownGuide, ready to inject as a system message.
+ */
+export function getSystemMetadata(): string {
+  logger.debug("[characterService] Generating system metadata");
+
   const systemLocale = Intl.DateTimeFormat().resolvedOptions().locale;
   const now = DateTime.now()
     .setLocale(systemLocale)
     .toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS);
-  logger.debug(`[characterService] Current timestamp: ${now}`);
-  description += `\n\n_Current time: ${now}_`;
 
-  // Append markdown guide
-  description += `\n\n${persona.markdownGuide}`;
-
-  // Escape any TeX sequences before returning
-  const finalPrompt = fixMathFormatting(description);
-  logger.debug(
-    `[characterService] Final system prompt length=${finalPrompt.length}`
-  );
-  return finalPrompt;
+  const meta = `_Current time: ${now}_` + `\n\n${persona.markdownGuide}`;
+  return meta;
 }
