@@ -90,7 +90,6 @@ export async function execute(
       openai,
       userId,
       undefined,
-      undefined,
       blocks,
       genericUrls
     );
