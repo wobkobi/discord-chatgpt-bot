@@ -80,7 +80,7 @@ export async function handleNewMessage(
       : false;
 
     // Randomly queue an interjection if not directly mentioned
-    if (!mentioned && message.guild && Math.random() < 1 / 50) {
+    if (!mentioned && message.guild && Math.random() < 1 / 200) {
       pendingInterjections.set(key, true);
       logger.debug(`[messageController] Queued interjection for ${key}`);
     }

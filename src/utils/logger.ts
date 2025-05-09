@@ -13,8 +13,9 @@ import path from "path";
 import winston from "winston";
 import DailyRotateFile from "winston-daily-rotate-file";
 import { LOGS_DIR, LOGS_ERROR_DIR } from "../config/paths.js";
-import { getRequired } from "./env.js";
+import { getOptional, initialiseEnv } from "./env.js";
 
+initialiseEnv();
 const { combine, timestamp, printf, colorize, errors } = winston.format;
 
 // Ensure log directories exist
@@ -72,7 +73,7 @@ const errorRotateTransport = new DailyRotateFile({
  * Retains 30 days and writes a symlink 'latest.log' at logsDir.
  */
 const combinedRotateTransport = new DailyRotateFile({
-  level: getRequired("LOG_LEVEL") || "info",
+  level: getOptional("LOG_LEVEL", "info"),
   dirname: LOGS_DIR,
   filename: "combined-%DATE%.log",
   datePattern: "YYYY-MM-DD",
@@ -86,7 +87,7 @@ const combinedRotateTransport = new DailyRotateFile({
  * Exports console and file transports with daily rotation and error handling.
  */
 const logger = winston.createLogger({
-  level: getRequired("LOG_LEVEL") || "info",
+  level: getOptional("LOG_LEVEL", "info"),
   format: commonFormat,
   transports: [consoleTransport, errorRotateTransport, combinedRotateTransport],
 });

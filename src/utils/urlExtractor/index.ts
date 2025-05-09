@@ -9,7 +9,7 @@
 import { Block } from "@/types";
 import { Message } from "discord.js";
 import { stripQuery } from "../discordHelpers.js";
-import { getRequired } from "../env.js";
+import { getOptional, getRequired } from "../env.js";
 import logger from "../logger.js";
 import { extractAttachments, extractStickers } from "./extractDiscord.js";
 import { extractGiphyGifs, extractTenorGifs } from "./extractGifs.js";
@@ -34,8 +34,8 @@ export async function extractInputs(
 ): Promise<{ blocks: Block[]; genericUrls: string[] }> {
   logger.debug("[urlExtractor] extractInputs invoked");
 
-  const tenorKey = getRequired("TENOR_API_KEY");
-  const giphyKey = getRequired("GIPHY_API_KEY");
+  const tenorKey = getOptional("TENOR_API_KEY");
+  const giphyKey = getOptional("GIPHY_API_KEY");
   const allowInline = getRequired("USE_FINE_TUNED_MODEL") !== "true";
 
   const blocks: Block[] = [];

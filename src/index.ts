@@ -27,10 +27,11 @@ import { fileURLToPath, pathToFileURL } from "url";
 
 import { handleNewMessage, run } from "./controllers/messageController.js";
 import { initialiseUserMemory } from "./store/userMemory.js";
-import { getRequired } from "./utils/env.js";
+import { getRequired, initialiseEnv } from "./utils/env.js";
 import logger from "./utils/logger.js";
 
 // Determine environment and command path
+initialiseEnv();
 const __filename = fileURLToPath(import.meta.url);
 const isRunningTS = __filename.endsWith(".ts");
 const buildCommandsPath = join(resolve(), "build", "commands");
