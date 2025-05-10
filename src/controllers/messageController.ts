@@ -2,7 +2,7 @@
  * @file src/controllers/messageController.ts
  * @description Manages incoming Discord messages: applies rate-limits, tracks conversation threads,
  *   updates long-term memory, triggers AI reply generation, and persists chat state.
- * @remarks
+ *
  *   Utilises debounced interjection logic, thread summarisation, URL/file extraction,
  *   emoji shortcode substitution, and ensures seamless multi-turn dialogue handling.
  *   Each major step emits detailed debug logs for traceability.
@@ -17,19 +17,19 @@ import { generateReply } from "../services/replyService.js";
 import { updateCloneMemory } from "../store/cloneMemory.js";
 import { updateUserMemory } from "../store/userMemory.js";
 import {
-  getCooldownConfig,
-  getCooldownContext,
-  isCooldownActive,
-  manageCooldown,
-  useCooldown,
-} from "../utils/cooldown.js";
-import {
   createChatMessage,
   replaceEmojiShortcodes,
   summariseConversation,
 } from "../utils/discordHelpers.js";
 import { loadConversations, saveConversations } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
+import {
+  getCooldownConfig,
+  getCooldownContext,
+  getInterjectionChance,
+  isCooldownActive,
+  manageCooldown,
+} from "../utils/rateControl.js";
 import { extractInputs } from "../utils/urlExtractor/index.js";
 
 /**
@@ -48,7 +48,6 @@ const interjectionTimers = new Map<string, NodeJS.Timeout>();
 
 /**
  * Creates and returns the handler for new Discord messages.
- *
  * @param openai - The OpenAI client instance for generating replies.
  * @param client - The Discord client instance.
  * @returns A function to handle 'messageCreate' events.
@@ -78,9 +77,11 @@ export async function handleNewMessage(
     const mentioned = message.guild
       ? message.mentions.has(client.user!.id)
       : false;
+    const guildId = message.guild?.id ?? null;
+    const chance = getInterjectionChance(guildId);
 
     // Randomly queue an interjection if not directly mentioned
-    if (!mentioned && message.guild && Math.random() < 1 / 50) {
+    if (!mentioned && Math.random() < chance) {
       pendingInterjections.set(key, true);
       logger.debug(`[messageController] Queued interjection for ${key}`);
     }
@@ -103,7 +104,12 @@ export async function handleNewMessage(
 
     // If directly mentioned, reply immediately
     if (message.guild && mentioned) {
-      await doReply(false);
+      try {
+        await doReply(false);
+      } catch (err) {
+        logger.error("[messageController] Error in reply workflow:", err);
+        await message.reply("⚠️ Sorry, I hit a snag generating that reply.");
+      }
       return;
     }
 
@@ -116,7 +122,6 @@ export async function handleNewMessage(
     /**
      * Performs the reply workflow: cleans input, handles memory & cooldowns,
      * manages threading, summarises if needed, builds AI prompt, and sends reply.
-     *
      * @param interject - True if this is a spontaneous interjection.
      */
     async function doReply(interject: boolean) {
@@ -146,10 +151,9 @@ export async function handleNewMessage(
       }
 
       // Enforce per-user/guild cooldown
+      const { useCooldown, cooldownTime } = getCooldownConfig(guildId);
       const cdKey = getCooldownContext(guildId, userId);
       if (useCooldown && isCooldownActive(cdKey)) {
-        const { cooldownTime } = getCooldownConfig(guildId);
-        logger.debug("[messageController] Cooldown active; notifying user");
         const warn = await message.reply(
           `⏳ Cooldown: ${cooldownTime.toFixed(2)}s`
         );
@@ -157,7 +161,6 @@ export async function handleNewMessage(
         return;
       }
       if (useCooldown) {
-        logger.debug("[messageController] Managing cooldown");
         manageCooldown(guildId, userId);
       }
 
@@ -300,7 +303,6 @@ export async function handleNewMessage(
 
 /**
  * Preloads stored conversations for each guild when the bot starts.
- *
  * @param client - The Discord client instance.
  * @returns Promise<void> once loading completes.
  */

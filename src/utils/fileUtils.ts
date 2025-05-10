@@ -1,7 +1,7 @@
 /**
  * @file src/utils/fileUtils.ts
  * @description Handles encryption, directory management, and generic data persistence for memory and conversations.
- * @remarks
+ *
  *   Uses AES-256-GCM encryption for secure storage and manages JSON serialization in the configured data directories.
  *   Provides debug logging at each step via logger.debug to trace file operations and encryption flows.
  */
@@ -29,7 +29,6 @@ logger.debug("[fileUtils] Module loaded");
 
 /**
  * Encrypt a plaintext string using AES-256-GCM with a key derived from the environment.
- *
  * @param plain - The plaintext to encrypt.
  * @returns The encrypted string, encoded as base64.
  */
@@ -54,7 +53,6 @@ export function encrypt(plain: string): string {
 
 /**
  * Decrypt a base64-encoded AES-256-GCM ciphertext string back to plaintext.
- *
  * @param enc - The encrypted string in base64.
  * @returns The decrypted plaintext.
  */
@@ -81,7 +79,6 @@ export function decrypt(enc: string): string {
 
 /**
  * Ensure a directory exists, creating it recursively if needed.
- *
  * @param dir - The directory path to ensure.
  */
 export async function ensureDir(dir: string): Promise<void> {
@@ -100,7 +97,6 @@ export async function ensureDir(dir: string): Promise<void> {
 
 /**
  * Generic save of JSON-serializable data to a specified directory with encryption.
- *
  * @param baseDir - The base directory for storage.
  * @param id - Identifier used as the filename (without extension).
  * @param data - The data to serialize and save.
@@ -127,7 +123,6 @@ export async function saveData<T>(
 
 /**
  * Generic load and decrypt of JSON-serialized data, returning a fallback if not found or on error.
- *
  * @param baseDir - The base directory for storage.
  * @param id - Identifier used as the filename (without extension).
  * @param fallback - Value to return if the file is missing or parsing fails.
@@ -194,7 +189,6 @@ export const loadCloneMemory = (uid: string): Promise<GeneralMemoryEntry[]> =>
 
 /**
  * Save all conversation threads for contexts to disk.
- *
  * @param histories - Map of context keys to conversation contexts.
  * @param idMaps - Map of context keys to message ID mappings.
  */
@@ -221,7 +215,6 @@ export async function saveConversations(
 
 /**
  * Load all conversation threads for a given context key into memory maps.
- *
  * @param ctx - Context key (guild or direct message key).
  * @param histories - Map to populate with conversation contexts.
  * @param idMaps - Map to populate with ID mappings.

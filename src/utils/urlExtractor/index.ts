@@ -2,14 +2,14 @@
  * @file src/utils/urlExtractor/index.ts
  * @description Parses and normalises various Discord message contents into structured ChatGPT Blocks,
  *   including stickers, attachments, inline images, GIFs, and social media embeds.
- * @remarks
+ *
  *   Handles stickers, attachments, inline/base64 images, Tenor and Giphy GIFs, social media embeds,
  *   and collates generic URLs. Detailed debug logging via logger.debug on each step.
  */
 import { Block } from "@/types";
 import { Message } from "discord.js";
 import { stripQuery } from "../discordHelpers.js";
-import { getRequired } from "../env.js";
+import { getOptional, getRequired } from "../env.js";
 import logger from "../logger.js";
 import { extractAttachments, extractStickers } from "./extractDiscord.js";
 import { extractGiphyGifs, extractTenorGifs } from "./extractGifs.js";
@@ -23,7 +23,6 @@ export const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif)(?:\?|$)/i;
 
 /**
  * Extracts structured content Blocks and leftover URLs from a Discord message.
- *
  * @param message - The incoming Discord.js Message object.
  * @returns An object containing:
  *   - blocks: Array of ChatGPT-compatible content Blocks.
@@ -34,8 +33,8 @@ export async function extractInputs(
 ): Promise<{ blocks: Block[]; genericUrls: string[] }> {
   logger.debug("[urlExtractor] extractInputs invoked");
 
-  const tenorKey = getRequired("TENOR_API_KEY");
-  const giphyKey = getRequired("GIPHY_API_KEY");
+  const tenorKey = getOptional("TENOR_API_KEY");
+  const giphyKey = getOptional("GIPHY_API_KEY");
   const allowInline = getRequired("USE_FINE_TUNED_MODEL") !== "true";
 
   const blocks: Block[] = [];
@@ -89,7 +88,6 @@ export async function extractInputs(
 
 /**
  * Filters out URLs that have already been processed as Blocks or should be skipped.
- *
  * @param content - Raw message content string.
  * @param seen - Set of URLs already produced as Blocks.
  * @param skip - Set of URLs to deliberately omit (e.g. embed source links).

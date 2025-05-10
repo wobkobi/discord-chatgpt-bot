@@ -2,7 +2,7 @@
  * @file src/services/characterService.ts
  * @description Loads persona configuration and builds system prompts and metadata
  *   for the AI, including clone-specific styling and markdown guidelines.
- * @remarks
+ *
  *   - Reads JSON persona data via ESM require
  *   - Exposes:
  *     • getCharacterDescription: base persona + clone style snippet (if clone)
@@ -45,13 +45,10 @@ try {
 
 /** ID of the clone user, used to apply clone-specific behaviours. */
 export const cloneUserId = persona.cloneUserId;
-/** Markdown formatting guide from persona configuration. */
-export const markdownGuide = persona.markdownGuide;
 
 /**
  * Builds the persona description for system prompts.
  * Includes the baseDescription and, if the user is the clone, a snippet of recent style.
- *
  * @param userId - Discord user ID; if it equals cloneUserId, includes a style snippet.
  * @returns Fully assembled persona prompt (without timestamp or markdown guide).
  */
@@ -83,7 +80,6 @@ export async function getCharacterDescription(
 /**
  * Builds system metadata for prompts.
  * Always includes the current timestamp and the markdown formatting guide.
- *
  * @returns String containing timestamp and markdownGuide, ready to inject as a system message.
  */
 export function getSystemMetadata(): string {

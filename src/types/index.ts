@@ -1,7 +1,7 @@
 /**
  * @file src/types/index.ts
  * @description Central TypeScript type definitions for Discord messages, memory entries, and conversation context.
- * @remarks
+ *
  *   Standardises how messages, memory logs, and guild settings are represented throughout the bot.
  *   Includes debug logging to confirm type module has been loaded.
  */

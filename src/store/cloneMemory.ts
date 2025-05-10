@@ -1,7 +1,7 @@
 /**
  * @file src/memory/cloneMemory.ts
  * @description Manages the clone memory store: logs interactions for the cloned user persona and persists them to disk.
- * @remarks
+ *
  *   Provides in-memory caching and persistence for clone-specific conversation memory.
  *   Uses debug logging to trace loads, updates, and saves.
  */
@@ -17,7 +17,6 @@ export const cloneMemory = new Map<string, GeneralMemoryEntry[]>();
 
 /**
  * Clears and initialises the in-memory clone memory cache.
- *
  * @async
  * @returns Promise that resolves once the cache has been cleared.
  */
@@ -30,7 +29,6 @@ export async function initialiseCloneMemory(): Promise<void> {
 
 /**
  * Appends a new memory entry for the clone persona, updates the cache, and persists to disk.
- *
  * @async
  * @param userId - Discord user ID for which to update the clone memory.
  * @param entry - The memory entry to append, containing timestamp and content.

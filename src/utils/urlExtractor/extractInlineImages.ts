@@ -1,7 +1,7 @@
 /**
  * @file src/utils/urlExtractor/extractInlineImages.ts
  * @description Scans message content for direct image URLs and inlines or references them.
- * @remarks
+ *
  *   - Recognises trusted hosts (e.g. Discord CDN, Tenor, Giphy) and adds URLs directly.
  *   - Inlines untrusted host images as base64 data URIs.
  *   - Honour allowInline flag; skip extraction when disabled.
@@ -24,7 +24,6 @@ const TRUSTED_IMAGE_HOSTS = [
 
 /**
  * Extracts inline images from message text, embedding or inlining as needed.
- *
  * @param message - The incoming Discord.js Message.
  * @param blocks - Array to append image_url Blocks.
  * @param seen - Set of URL keys already included.

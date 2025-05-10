@@ -3,7 +3,7 @@
  * @description Slash command to privately ask the AI assistant a question.
  *   Handles URL and attachment extraction, persona and memory injection,
  *   maths rendering, and ephemeral reply.
- * @remarks
+ *
  *   Workflow:
  *     1. Defer reply ephemerally for async processing
  *     2. Extract any attachments or inline media from the question
@@ -45,7 +45,6 @@ export const data = new SlashCommandBuilder()
 
 /**
  * Execute the /ask command.
- *
  * @param interaction - The ChatInputCommandInteraction context.
  * @returns Resolves once the assistant’s reply is sent or an error is handled.
  */
