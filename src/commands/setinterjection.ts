@@ -2,7 +2,7 @@
  * @file src/commands/setinterjection.ts
  * @description Slash command to configure how often the bot randomly interjects when not mentioned.
  *   Restricted to the bot owner or server administrators.
- * @remarks
+ *
  *   Stores a “1 in N” chance per server (minimum N=50). Persists configuration to disk.
  */
 import {
@@ -22,8 +22,8 @@ import logger from "../utils/logger.js";
 const OWNER_ID = getRequired("OWNER_ID");
 
 /**
- * /setinterjection
- * @param rate – Denominator N for a “1 in N” random interjection chance (must be ≥50).
+ * Slash command definition for /setinterjection.
+ * @param rate - Denominator N for a “1 in N” random interjection chance (must be ≥50).
  */
 export const data = new SlashCommandBuilder()
   .setName("setinterjection")
@@ -40,6 +40,8 @@ export const data = new SlashCommandBuilder()
 
 /**
  * Executes the /setinterjection command.
+ * @param interaction - The ChatInputCommandInteraction context.
+ * @returns A promise that resolves once the command has been processed and replied to.
  */
 export async function execute(
   interaction: ChatInputCommandInteraction
@@ -85,10 +87,7 @@ export async function execute(
   }
 
   // Get existing or defaults
-  const existing: {
-    cooldown: typeof defaultCooldownConfig;
-    interjectionRate: number;
-  } = guildConfigs.get(guildId) ?? {
+  const existing = guildConfigs.get(guildId) ?? {
     cooldown: defaultCooldownConfig,
     interjectionRate: defaultInterjectionRate,
   };

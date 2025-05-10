@@ -1,7 +1,7 @@
 /**
  * @file src/config/paths.ts
  * @description Centralised definitions of all filesystem paths used by the bot.
- * @remarks
+ *
  *   Provides a single source of truth for data storage and log directories.
  *   Constants are logged at startup for debug tracing.
  */

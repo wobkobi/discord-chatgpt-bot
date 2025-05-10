@@ -1,7 +1,7 @@
 /**
  * @file src/utils/urlExtractor/extractGifs.ts
  * @description Fetches and embeds GIFs from Tenor and Giphy services into ChatGPT Blocks.
- * @remarks
+ *
  *   - extractTenorGifs: calls Tenor API to retrieve GIF URLs by message links.
  *   - extractGiphyGifs: uses GiphyFetch to fetch GIFs from Giphy links.
  *   - Avoids duplicates using seen and skip sets.
@@ -26,7 +26,6 @@ interface TenorPostsResponse {
 
 /**
  * Fetches and embeds Tenor GIFs by ID parsed from Discord message links.
- *
  * @param message - The Discord.js Message containing Tenor links.
  * @param blocks - Array to append image_url Blocks.
  * @param seen - Set of image URL keys already processed.
@@ -69,7 +68,6 @@ export async function extractTenorGifs(
 
 /**
  * Fetches and embeds Giphy GIFs by parsing IDs from Discord message URLs.
- *
  * @param message - The Discord.js Message containing Giphy links.
  * @param blocks - Array to append image_url Blocks.
  * @param seen - Set of image URL keys already processed.

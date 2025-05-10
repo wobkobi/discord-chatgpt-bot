@@ -2,7 +2,7 @@
  * @file src/utils/latexRenderer.ts
  * @description Provides utilities to render LaTeX expressions to SVG, PNG, and JPG formats using MathJax and Sharp,
  *   with deterministic caching based on content hashes.
- * @remarks
+ *
  *   Cached outputs are stored under data/output for reuse across process restarts.
  *   Uses debug logging via logger.debug to trace rendering and caching steps.
  */
@@ -30,7 +30,6 @@ logger.debug("[latexRenderer] Module loaded and MathJax initialised");
 
 /**
  * Ensure the output directory exists, creating it recursively if necessary.
- *
  * @async
  * @returns Promise<void> that resolves once the directory is ensured.
  */
@@ -49,7 +48,6 @@ ensureOutputDir();
 
 /**
  * Compute a deterministic cache key for a given LaTeX input by hashing.
- *
  * @param latex - The raw LaTeX string to hash.
  * @returns A 16-character hex string derived from the SHA-256 hash of the input.
  */
@@ -64,7 +62,6 @@ function computeKey(latex: string): string {
 /**
  * Render a LaTeX string to an SVG markup fragment.
  * Extracts only the <svg>…</svg> portion from the full MathJax output.
- *
  * @param latex - The LaTeX expression to convert.
  * @returns String containing the SVG XML markup.
  * @throws Error when the MathJax output does not contain valid SVG tags.
@@ -89,7 +86,6 @@ function renderLatexToSvgString(latex: string): string {
 
 /**
  * Render LaTeX to an SVG file on disk, using a cached version if available.
- *
  * @param latexInput - Raw LaTeX string to render.
  * @returns Promise resolving to the absolute path of the generated or cached SVG file.
  */
@@ -115,7 +111,6 @@ export async function renderMathToSvg(latexInput: string): Promise<string> {
 
 /**
  * Render LaTeX to a PNG buffer and save it on disk, reusing cache when possible.
- *
  * @param latexInput - Raw LaTeX string to render.
  * @returns Promise resolving to an object containing the PNG buffer and its file path.
  */
@@ -148,7 +143,6 @@ export async function renderMathToPng(
 
 /**
  * Render LaTeX to a JPEG buffer and save it on disk, reusing cache when possible.
- *
  * @param latexInput - Raw LaTeX string to render.
  * @returns Promise resolving to an object containing the JPEG buffer and its file path.
  */

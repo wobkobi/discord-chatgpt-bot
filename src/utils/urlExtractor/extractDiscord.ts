@@ -1,7 +1,7 @@
 /**
  * @file src/utils/urlExtractor/extractDiscord.ts
  * @description Captures Discord stickers and attachments, converting them into ChatGPT Blocks.
- * @remarks
+ *
  *   - extractStickers: transforms message.stickers into image_url blocks.
  *   - extractAttachments: processes images, PDFs, text files and other attachments,
  *     embedding or skipping based on content type.
@@ -15,7 +15,6 @@ import logger from "../logger.js";
 
 /**
  * Captures Discord sticker images as image_url blocks.
- *
  * @param message - The incoming Discord.js Message.
  * @param blocks - Array to append Block objects.
  * @param seen - Set of image URL keys already processed.
@@ -40,7 +39,6 @@ export function extractStickers(
  * - PDFs: fetched and embedded as base64 files.
  * - Text: fetched and embedded as code blocks (truncated at 8000 chars).
  * - Others: skipped.
- *
  * @param message - The incoming Discord.js Message.
  * @param blocks - Array to append Block objects.
  * @param seen - Set of URL keys already processed.

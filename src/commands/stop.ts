@@ -13,7 +13,7 @@ import logger from "../utils/logger.js";
 
 /**
  * Slash command registration data for /stop.
- * @remarks
+ *
  *   This command is owner-only and will terminate the bot process after a short delay.
  */
 export const data = new SlashCommandBuilder()
@@ -24,7 +24,6 @@ export const data = new SlashCommandBuilder()
  * Executes the /stop command.
  * Validates that the invoking user is the configured owner, acknowledges shutdown,
  * then cleanly destroys the Discord client and exits the process.
- *
  * @param interaction - The ChatInputCommandInteraction context for this command.
  * @returns A promise that resolves once the shutdown sequence is initiated.
  * @throws Will throw if client destruction or process exit fails.

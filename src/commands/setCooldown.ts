@@ -2,7 +2,7 @@
  * @file src/commands/setcooldown.ts
  * @description Slash command to configure this server’s message cooldown settings.
  *   Restricted to the bot owner or server administrators.
- * @remarks
+ *
  *   Validates permissions, updates the guild’s combined config object,
  *   and persists via saveGuildConfigs().
  */
@@ -25,7 +25,9 @@ const OWNER_ID = getRequired("OWNER_ID");
 
 /**
  * Helper to turn seconds into a human-friendly string.
- * e.g. 60 → "1 minute", 120 → "2 minutes", 75 → "75 seconds"
+ * @param seconds – The duration in seconds to format.
+ * @returns A string formatted as hours, minutes, or seconds;
+ *          e.g. `60 → "1 minute"`, `120 → "2 minutes"`, `75 → "75 seconds"`.
  */
 function formatDuration(seconds: number): string {
   if (seconds % 3600 === 0) {

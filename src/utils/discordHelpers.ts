@@ -3,7 +3,7 @@
  * @description Utilities for normalising Discord messages: fixing mentions, formatting markdown and maths,
  *   substituting emoji shortcodes, constructing chat message objects, summarising conversations,
  *   and stripping URL queries.
- * @remarks
+ *
  *   Ensures consistent formatting and context extraction for AI prompt construction.
  *   Emits detailed debug logs via logger.debug at each helper entry and exit.
  */
@@ -14,7 +14,6 @@ import logger from "./logger.js";
 
 /**
  * Escape TeX sequences so they render correctly within Discord markdown by wrapping them in backticks.
- *
  * @param text - Raw text potentially containing LaTeX bracket sequences.
  * @returns The input text with all `\[...\]` sequences escaped as ``\`[...\]`\``.
  */
@@ -28,7 +27,6 @@ function fixMathFormatting(text: string): string {
 
 /**
  * Normalise Discord mention syntax and remove stray '@' characters.
- *
  * @param text - The raw message text containing Discord mentions.
  * @returns The text with unified mention format `<@id>` and no stray '@'.
  */
@@ -43,9 +41,8 @@ export function fixMentions(text: string): string {
 
 /**
  * Apply Discord markdown preprocessing:
- *   1. Normalise mentions
- *   2. Escape TeX maths sequences
- *
+ * 1. Normalise mentions
+ * 2. Escape TeX maths sequences
  * @param text - The raw message text to format.
  * @returns The formatted text, safe for Discord display.
  */
@@ -60,7 +57,6 @@ export function applyDiscordMarkdownFormatting(text: string): string {
 
 /**
  * Replace colon-based emoji shortcodes (e.g. `:smile:`) with actual guild emoji tags.
- *
  * @param text  - The message text containing colon-based shortcodes.
  * @param guild - The Discord guild from which to resolve custom emoji.
  * @returns The text with shortcodes replaced by `<:name:id>` where available.
@@ -78,7 +74,6 @@ export function replaceEmojiShortcodes(text: string, guild: Guild): string {
 
 /**
  * Construct a standardised ChatMessage object from a Discord Message.
- *
  * @param message - The original Discord message.
  * @param role    - Sender role in the conversation ('user' or 'assistant').
  * @param botName - Optional bot display name when role is 'assistant'.
@@ -118,7 +113,6 @@ export function createChatMessage(
 
 /**
  * Summarise the last few messages in a conversation context for memory storage.
- *
  * @param context - The ConversationContext containing message history.
  * @returns A concatenated string of the last three message contents.
  */
@@ -138,7 +132,6 @@ export function summariseConversation(context: ConversationContext): string {
 
 /**
  * Strip query strings from a URL so comparison uses only origin and pathname.
- *
  * @param url - The full URL potentially containing query parameters.
  * @returns The URL without its query string.
  */

@@ -1,7 +1,7 @@
 /**
  * @file src/utils/urlExtractor/extractSocialEmbeds.ts
  * @description Processes social media embeds (Twitter, YouTube, Reddit, Instagram, TikTok) into Blocks.
- * @remarks
+ *
  *   - Detects provider links via regex patterns.
  *   - Twitter: oEmbed for images and text extraction.
  *   - YouTube: oEmbed for thumbnail and title.
@@ -38,11 +38,11 @@ const PROVIDERS = [
 ];
 
 /**
- * Extracts social media embeds from message content.
- *
- * @param message - The incoming Discord.js Message.
- * @param blocks - Array to append text or image_url Blocks.
- * @param skip - Set of URLs to omit from generic fallback.
+ * Extracts social media embeds from a Discord message.
+ * @param message - The incoming Discord.js Message to inspect.
+ * @param blocks - The array to append resulting Blocks (text or image_url).
+ * @param skip - A Set of URLs to omit from generic fallback processing.
+ * @returns A promise that resolves when all providers have been processed.
  */
 export async function extractSocialEmbeds(
   message: Message,
@@ -54,18 +54,17 @@ export async function extractSocialEmbeds(
   for (const { name, re } of PROVIDERS) {
     const links = message.content.match(re) || [];
     for (const link of links) {
-      skip.add(stripQuery(link));
+      const clean = stripQuery(link);
+      skip.add(clean);
       logger.debug(`[extractSocialEmbeds] Processing ${name} link: ${link}`);
 
       if (IMAGE_EXT_RE.test(link)) {
-        // Direct image URL
         blocks.push({ type: "image_url", image_url: { url: link } });
       } else if (name === "twitter") {
         await handleTwitter(link, blocks);
       } else if (name === "youtube") {
         await handleYouTube(link, blocks);
       } else {
-        // Fallback: plain URL text
         blocks.push({ type: "text", text: link });
       }
     }
@@ -74,6 +73,9 @@ export async function extractSocialEmbeds(
 
 /**
  * Handles Twitter oEmbed extraction: images and tweet text.
+ * @param link - The URL of the Tweet to fetch oEmbed data for.
+ * @param blocks - The array of Blocks to append extracted images or text.
+ * @returns A promise that resolves once processing is complete.
  */
 async function handleTwitter(link: string, blocks: Block[]): Promise<void> {
   logger.debug(`[handleTwitter] invoked for ${link}`);
@@ -111,6 +113,9 @@ async function handleTwitter(link: string, blocks: Block[]): Promise<void> {
 
 /**
  * Handles YouTube oEmbed extraction: thumbnail image and video title.
+ * @param link - The URL of the YouTube video to fetch oEmbed data for.
+ * @param blocks - The array of Blocks to append thumbnail and title text.
+ * @returns A promise that resolves once processing is complete.
  */
 async function handleYouTube(link: string, blocks: Block[]): Promise<void> {
   logger.debug(`[handleYouTube] invoked for ${link}`);

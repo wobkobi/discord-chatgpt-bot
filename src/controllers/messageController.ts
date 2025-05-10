@@ -2,7 +2,7 @@
  * @file src/controllers/messageController.ts
  * @description Manages incoming Discord messages: applies rate-limits, tracks conversation threads,
  *   updates long-term memory, triggers AI reply generation, and persists chat state.
- * @remarks
+ *
  *   Utilises debounced interjection logic, thread summarisation, URL/file extraction,
  *   emoji shortcode substitution, and ensures seamless multi-turn dialogue handling.
  *   Each major step emits detailed debug logs for traceability.
@@ -48,7 +48,6 @@ const interjectionTimers = new Map<string, NodeJS.Timeout>();
 
 /**
  * Creates and returns the handler for new Discord messages.
- *
  * @param openai - The OpenAI client instance for generating replies.
  * @param client - The Discord client instance.
  * @returns A function to handle 'messageCreate' events.
@@ -105,7 +104,12 @@ export async function handleNewMessage(
 
     // If directly mentioned, reply immediately
     if (message.guild && mentioned) {
-      await doReply(false);
+      try {
+        await doReply(false);
+      } catch (err) {
+        logger.error("[messageController] Error in reply workflow:", err);
+        await message.reply("⚠️ Sorry, I hit a snag generating that reply.");
+      }
       return;
     }
 
@@ -118,7 +122,6 @@ export async function handleNewMessage(
     /**
      * Performs the reply workflow: cleans input, handles memory & cooldowns,
      * manages threading, summarises if needed, builds AI prompt, and sends reply.
-     *
      * @param interject - True if this is a spontaneous interjection.
      */
     async function doReply(interject: boolean) {
@@ -300,7 +303,6 @@ export async function handleNewMessage(
 
 /**
  * Preloads stored conversations for each guild when the bot starts.
- *
  * @param client - The Discord client instance.
  * @returns Promise<void> once loading completes.
  */

@@ -1,11 +1,11 @@
 /**
  * @file src/index.ts
  * @description Entry point for initialising and running the Discord bot, including command loading,
- *   registration, event handling, and AI integration.
- * @remarks
- *   Dynamically discovers and registers slash commands, initialises memory stores,
- *   loads per-guild configurations, sets up message and interaction handlers, and manages graceful shutdown.
- *   Includes debug logs via logger.debug for tracing startup steps.
+ * registration, event handling, and AI integration.
+ *
+ * Dynamically discovers and registers slash commands, initialises memory stores,
+ * loads per-guild configurations, sets up message and interaction handlers, and manages graceful shutdown.
+ * Includes debug logs via logger.debug for tracing startup steps.
  */
 
 import { REST } from "@discordjs/rest";
@@ -25,11 +25,11 @@ import OpenAI from "openai";
 import { join, resolve } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { loadGuildConfigs } from "./config/index.js";
+import { handleNewMessage, run } from "./controllers/messageController.js";
+import { initialiseCloneMemory } from "./store/cloneMemory.js";
+import { initialiseUserMemory } from "./store/userMemory.js";
 import { initialiseEnv } from "./utils/env.js";
 import logger from "./utils/logger.js";
-
-import { handleNewMessage, run } from "./controllers/messageController.js";
-import { initialiseUserMemory } from "./store/userMemory.js";
 
 // Determine environment and command path
 const __filename = fileURLToPath(import.meta.url);
@@ -64,7 +64,6 @@ let botReady = false;
 
 /**
  * Indicates whether the bot has completed initialisation and is ready to process messages.
- *
  * @returns True if initialisation is complete; false otherwise.
  */
 export function isBotReady(): boolean {
@@ -72,10 +71,14 @@ export function isBotReady(): boolean {
 }
 
 (async () => {
-  // 1️⃣ Initialise environment variables
+  /**
+   * Initialise environment variables.
+   */
   initialiseEnv();
 
-  // 2️⃣ Load per-guild configurations (cooldown + interjectionRate)
+  /**
+   * Load per-guild configurations (cooldown + interjectionRate).
+   */
   try {
     await loadGuildConfigs();
     logger.info("✅ Guild configurations loaded");
@@ -83,7 +86,9 @@ export function isBotReady(): boolean {
     logger.warn("⚠️ Could not load guild configurations; using defaults", err);
   }
 
-  // 3️⃣ Initialise Discord client
+  /**
+   * Initialise Discord client with required intents and partials.
+   */
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -95,7 +100,9 @@ export function isBotReady(): boolean {
   });
   client.commands = new Collection<string, SlashCommandModule>();
 
-  // 4️⃣ Dynamically load slash commands
+  /**
+   * Dynamically load slash command modules from commandsPath.
+   */
   const commandFiles = readdirSync(commandsPath).filter((f) =>
     f.endsWith(extension)
   );
@@ -123,7 +130,10 @@ export function isBotReady(): boolean {
     logger.info(`    • ${name}`);
   }
 
-  // 5️⃣ Function to register commands globally
+  /**
+   * Register slash commands globally.
+   * @returns Promise that resolves when commands are registered.
+   */
   async function registerGlobalCommands(): Promise<void> {
     const rest = new REST({ version: "10" }).setToken(process.env.BOT_TOKEN!);
     const payload = Array.from(client.commands.values()).map((c) =>
@@ -141,16 +151,21 @@ export function isBotReady(): boolean {
     }
   }
 
-  // 6️⃣ Initialise OpenAI client
+  /**
+   * Initialise OpenAI client.
+   */
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
   let messageHandler: (message: Message) => Promise<void>;
 
-  // 7️⃣ Set up event listeners
+  /**
+   * Set up event listeners for client readiness, messages, and interactions.
+   */
   client.once("ready", async () => {
     logger.info(`🤖 Logged in as ${client.user!.tag}`);
 
     await registerGlobalCommands();
     await initialiseUserMemory();
+    await initialiseCloneMemory();
 
     messageHandler = await handleNewMessage(openai, client);
     logger.info("🔄 Message handler initialised.");
@@ -190,9 +205,15 @@ export function isBotReady(): boolean {
     }
   });
 
-  // 8️⃣ Handle unhandled rejections & graceful shutdown
+  /**
+   * Handle unhandled promise rejections and uncaught exceptions,
+   * and perform graceful shutdown on SIGINT.
+   */
   process.on("unhandledRejection", (reason) => {
     logger.error("Unhandled promise rejection:", reason);
+  });
+  process.on("uncaughtException", (err) => {
+    logger.error("Uncaught exception:", err);
   });
   process.on("SIGINT", () => {
     logger.info("🛑 Shutting down...");
@@ -200,7 +221,9 @@ export function isBotReady(): boolean {
     process.exit(0);
   });
 
-  // 9️⃣ Start the bot
+  /**
+   * Start the bot by logging in.
+   */
   client
     .login(process.env.BOT_TOKEN)
     .then(() => logger.info("🚀 Login successful."))

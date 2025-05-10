@@ -1,7 +1,7 @@
 /**
  * @file src/memory/userMemory.ts
  * @description Manages long-term memory entries for regular users, stored in-memory and persisted to disk.
- * @remarks
+ *
  *   Provides fast in-memory access and persists to a JSON store to survive restarts.
  *   Uses debug logging for tracing load, clear, update, and save operations.
  */
@@ -17,7 +17,6 @@ export const userMemory = new Map<string, GeneralMemoryEntry[]>();
 
 /**
  * Clears and initialises the in-memory user memory cache.
- *
  * @async
  * @returns Promise<void> that resolves once the cache has been cleared.
  */
@@ -29,7 +28,6 @@ export async function initialiseUserMemory(): Promise<void> {
 
 /**
  * Appends a new memory entry for a user, updates the in-memory cache, and persists to disk.
- *
  * @async
  * @param userId - Discord user ID for whom to store the memory entry.
  * @param entry - The memory entry to append, containing timestamp and content.

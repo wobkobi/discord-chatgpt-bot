@@ -1,8 +1,8 @@
-// eslint.config.js
 import { FlatCompat } from "@eslint/eslintrc";
 import js from "@eslint/js";
 import typescriptEslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
+import jsdoc from "eslint-plugin-jsdoc";
 import prettier from "eslint-plugin-prettier";
 import globals from "globals";
 import path from "node:path";
@@ -19,31 +19,35 @@ const compat = new FlatCompat({
 });
 
 export default [
-  // 1) Files/globs to ignore entirely
+  // Ignore patterns entirely
   { ignores: ["**/node_modules/**", "build/**", "dist/**"] },
 
-  // 2) Bring in ESLint, TypeScript‑ESLint and Prettier recommended rules
+  // JSDoc recommended rules for TypeScript (report as errors)
+  jsdoc.configs["flat/recommended-typescript-error"],
+
+  // ESLint, TypeScript-ESLint, and Prettier recommended rules
   ...compat.extends(
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended",
     "prettier"
   ),
 
-  // 3) Our project‑specific overrides
+  // Project-specific overrides
   {
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 2020,
       sourceType: "module",
       globals: {
-        ...globals.browser, // browser global vars (window, etc.)
-        ...globals.node, // Node.js global vars (process, Buffer, etc.)
+        ...globals.browser,
+        ...globals.node,
       },
     },
 
     plugins: {
       "@typescript-eslint": typescriptEslint,
       prettier,
+      jsdoc,
     },
 
     settings: {
@@ -53,25 +57,31 @@ export default [
           extensions: [".js", ".jsx", ".ts", ".tsx", ".mjs"],
         },
       },
+      jsdoc: {
+        mode: "typescript",
+      },
     },
 
     rules: {
-      // Treat any unused variable as an error
+      // No unused variables
       "@typescript-eslint/no-unused-vars": "error",
 
-      // Enforce Prettier formatting as ESLint errors
-      "prettier/prettier": [
-        "error",
-        {
-          endOfLine: "crlf",
-        },
-      ],
-
-      // Ensure Windows‑style line endings
+      // Prettier formatting enforcement
+      "prettier/prettier": ["error", { endOfLine: "crlf" }],
       "linebreak-style": ["error", "windows"],
 
-      // Consistent choice between `type` vs `interface`
+      // Consistent type definitions
       "@typescript-eslint/consistent-type-definitions": "error",
+
+      // JSDoc enforcement rules
+      "jsdoc/require-jsdoc": "error",
+      "jsdoc/require-param": "error",
+      "jsdoc/require-param-description": "error",
+      "jsdoc/require-returns": "error",
+      "jsdoc/require-returns-description": "error",
+      "jsdoc/check-param-names": "error",
+      "jsdoc/check-tag-names": "error",
+      "jsdoc/no-undefined-types": "error",
     },
   },
 ];

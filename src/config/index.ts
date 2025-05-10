@@ -3,7 +3,7 @@
  * @description Defines, loads and persists per-guild settings in a single JSON:
  *   • message cooldown configuration
  *   • random interjection “1-in-N” rate
- * @remarks
+ *
  *   In-memory cache, JSON persistence, default values, and detailed logging.
  */
 import fs from "fs/promises";
