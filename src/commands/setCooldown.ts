@@ -3,23 +3,41 @@
  * @description Slash command to configure this server’s message cooldown settings.
  *   Restricted to the bot owner or server administrators.
  * @remarks
- *   Validates permissions, applies new settings, and persists configuration.
+ *   Validates permissions, updates the guild’s combined config object,
+ *   and persists via saveGuildConfigs().
  */
 import {
   ChatInputCommandInteraction,
-  MessageFlags,
   PermissionsBitField,
   SlashCommandBuilder,
 } from "discord.js";
 import {
-  GuildCooldownConfig,
-  guildCooldownConfigs,
-  saveGuildCooldownConfigs,
+  defaultCooldownConfig,
+  defaultInterjectionRate,
+  GuildConfig,
+  guildConfigs,
+  saveGuildConfigs,
 } from "../config/index.js";
 import { getRequired } from "../utils/env.js";
 import logger from "../utils/logger.js";
 
 const OWNER_ID = getRequired("OWNER_ID");
+
+/**
+ * Helper to turn seconds into a human-friendly string.
+ * e.g. 60 → "1 minute", 120 → "2 minutes", 75 → "75 seconds"
+ */
+function formatDuration(seconds: number): string {
+  if (seconds % 3600 === 0) {
+    const hrs = seconds / 3600;
+    return `${hrs} hour${hrs !== 1 ? "s" : ""}`;
+  }
+  if (seconds % 60 === 0) {
+    const mins = seconds / 60;
+    return `${mins} minute${mins !== 1 ? "s" : ""}`;
+  }
+  return `${seconds} second${seconds !== 1 ? "s" : ""}`;
+}
 
 /**
  * Slash command registration data for /setcooldown.
@@ -53,90 +71,77 @@ export async function execute(
   const userId = interaction.user.id;
   logger.debug(`[setcooldown] Invoked by userId=${userId}`);
 
-  try {
-    const isOwner = OWNER_ID === userId;
-    const isAdmin = interaction.memberPermissions?.has(
-      PermissionsBitField.Flags.Administrator
-    );
-    logger.debug(
-      `[setcooldown] Permission check isOwner=${isOwner} isAdmin=${isAdmin}`
-    );
+  // Permission check
+  const isOwner = OWNER_ID === userId;
+  const isAdmin = interaction.memberPermissions?.has(
+    PermissionsBitField.Flags.Administrator
+  );
+  if (!isOwner && !isAdmin) {
+    await interaction.reply({
+      content:
+        "🚫 You must be a server administrator or the bot owner to configure cooldown.",
+      ephemeral: true,
+    });
+    return;
+  }
 
-    // Permission check: only owner or admin may proceed
-    if (!isOwner && !isAdmin) {
-      logger.debug(`[setcooldown] Permission denied for userId=${userId}`);
-      await interaction.reply({
-        content:
-          "🚫 You must be a server admin or the bot owner to configure cooldown.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+  // Must be in a guild
+  const guildId = interaction.guild?.id;
+  if (!guildId) {
+    await interaction.reply({
+      content: "❌ This command can only be used in a server.",
+      ephemeral: true,
+    });
+    return;
+  }
 
-    // Retrieve options
-    const time = interaction.options.getNumber("time", true);
-    const perUser = interaction.options.getBoolean("peruser") ?? false;
-    logger.debug(
-      `[setcooldown] Options retrieved time=${time} perUser=${perUser}`
-    );
+  // Read options
+  const time = interaction.options.getNumber("time", true);
+  const perUser = interaction.options.getBoolean("peruser") ?? false;
 
-    // Ensure command is used in a guild
-    const guildId = interaction.guild?.id;
-    logger.debug(`[setcooldown] Interaction occurred in guildId=${guildId}`);
-    if (!guildId) {
-      logger.warn("[setcooldown] Command not in a guild context");
-      await interaction.reply({
-        content: "❌ This command can only be used in a server.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+  if (time < 0) {
+    await interaction.reply({
+      content: "⏱️ Cooldown time must be zero or positive.",
+      ephemeral: true,
+    });
+    return;
+  }
 
-    // Validate time argument
-    if (time < 0) {
-      logger.debug(`[setcooldown] Invalid time=${time}`);
-      await interaction.reply({
-        content: "⏱️ Cooldown time must be zero or positive.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+  // Fetch existing config or defaults
+  const existing: GuildConfig = guildConfigs.get(guildId) ?? {
+    cooldown: defaultCooldownConfig,
+    interjectionRate: defaultInterjectionRate,
+  };
 
-    // Apply and save new configuration
-    const newConfig: GuildCooldownConfig = {
+  // Build updated config
+  const newConfig: GuildConfig = {
+    cooldown: {
       useCooldown: time > 0,
       cooldownTime: time,
       perUserCooldown: perUser,
-    };
-    guildCooldownConfigs.set(guildId, newConfig);
-    logger.debug(
-      `[setcooldown] Saving newConfig for guildId=${guildId}: ${JSON.stringify(
-        newConfig
-      )}`
-    );
-    await saveGuildCooldownConfigs();
+    },
+    interjectionRate: existing.interjectionRate,
+  };
 
-    logger.info(
-      `[setcooldown] New cooldown for guild ${guildId}: ${JSON.stringify(
-        newConfig
-      )}`
-    );
+  // Persist
+  guildConfigs.set(guildId, newConfig);
+  await saveGuildConfigs();
+  logger.info(
+    `[setcooldown] Guild ${guildId} cooldown updated: ${JSON.stringify(
+      newConfig.cooldown
+    )}`
+  );
 
-    // Confirm update to user
-    await interaction.reply({
-      content: `✅ Cooldown set to **${time}s** (${perUser ? "per user" : "global"})`,
-      flags: MessageFlags.Ephemeral,
-    });
-    logger.debug(
-      `[setcooldown] Reply sent to userId=${userId} in guildId=${guildId}`
-    );
-  } catch (err) {
-    logger.error("[setcooldown] Unexpected error:", err);
-    if (!interaction.replied) {
-      await interaction.reply({
-        content: "❌ An error occurred while updating cooldown.",
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-  }
+  // Confirmation message
+  const durationText = time === 0 ? "" : formatDuration(time);
+  const scopeText = time === 0 ? "" : perUser ? "per user" : "globally";
+  const reply =
+    time === 0
+      ? `✅ Cooldown disabled.`
+      : `✅ Cooldown set to **${durationText}** ${scopeText}.`;
+
+  await interaction.reply({
+    content: reply,
+    ephemeral: true,
+  });
 }

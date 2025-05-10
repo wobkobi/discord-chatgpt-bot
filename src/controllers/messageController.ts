@@ -17,19 +17,19 @@ import { generateReply } from "../services/replyService.js";
 import { updateCloneMemory } from "../store/cloneMemory.js";
 import { updateUserMemory } from "../store/userMemory.js";
 import {
-  getCooldownConfig,
-  getCooldownContext,
-  isCooldownActive,
-  manageCooldown,
-  useCooldown,
-} from "../utils/cooldown.js";
-import {
   createChatMessage,
   replaceEmojiShortcodes,
   summariseConversation,
 } from "../utils/discordHelpers.js";
 import { loadConversations, saveConversations } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
+import {
+  getCooldownConfig,
+  getCooldownContext,
+  getInterjectionChance,
+  isCooldownActive,
+  manageCooldown,
+} from "../utils/rateControl.js";
 import { extractInputs } from "../utils/urlExtractor/index.js";
 
 /**
@@ -78,9 +78,11 @@ export async function handleNewMessage(
     const mentioned = message.guild
       ? message.mentions.has(client.user!.id)
       : false;
+    const guildId = message.guild?.id ?? null;
+    const chance = getInterjectionChance(guildId);
 
     // Randomly queue an interjection if not directly mentioned
-    if (!mentioned && message.guild && Math.random() < 1 / 200) {
+    if (!mentioned && Math.random() < chance) {
       pendingInterjections.set(key, true);
       logger.debug(`[messageController] Queued interjection for ${key}`);
     }
@@ -146,10 +148,9 @@ export async function handleNewMessage(
       }
 
       // Enforce per-user/guild cooldown
+      const { useCooldown, cooldownTime } = getCooldownConfig(guildId);
       const cdKey = getCooldownContext(guildId, userId);
       if (useCooldown && isCooldownActive(cdKey)) {
-        const { cooldownTime } = getCooldownConfig(guildId);
-        logger.debug("[messageController] Cooldown active; notifying user");
         const warn = await message.reply(
           `⏳ Cooldown: ${cooldownTime.toFixed(2)}s`
         );
@@ -157,7 +158,6 @@ export async function handleNewMessage(
         return;
       }
       if (useCooldown) {
-        logger.debug("[messageController] Managing cooldown");
         manageCooldown(guildId, userId);
       }
 

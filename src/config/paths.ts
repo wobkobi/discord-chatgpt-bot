@@ -13,14 +13,14 @@ import { join } from "path";
 export const DATA_DIR = join(process.cwd(), "data");
 
 /**
+ * Single JSON file for all per-guild settings (cooldown + interjection rate).
+ */
+export const GUILD_CONFIG_FILE = join(DATA_DIR, "guildConfigs.json");
+
+/**
  * Sub-directory for LaTeX renderer outputs (SVG, PNG, JPG).
  */
 export const OUTPUT_DIR = join(DATA_DIR, "output");
-
-/**
- * Filepath for persisting per-guild cooldown configuration.
- */
-export const CONFIG_FILE = join(DATA_DIR, "guildCooldownConfigs.json");
 
 /**
  * Directory for storing long-term memory entries for regular users.

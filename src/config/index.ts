@@ -1,98 +1,104 @@
 /**
  * @file src/config/index.ts
- * @description Defines, loads, and persists per-guild cooldown configuration for the bot.
+ * @description Defines, loads and persists per-guild settings in a single JSON:
+ *   • message cooldown configuration
+ *   • random interjection “1-in-N” rate
  * @remarks
- *   Provides in-memory caching, JSON persistence, and default settings loaded on startup.
- *   Uses logger.debug for detailed tracing.
+ *   In-memory cache, JSON persistence, default values, and detailed logging.
  */
-
 import fs from "fs/promises";
 import logger from "../utils/logger.js";
-import { CONFIG_FILE, DATA_DIR } from "./paths.js";
+import { DATA_DIR, GUILD_CONFIG_FILE } from "./paths.js";
 
 /**
- * Configuration options for per-guild cooldown behaviour.
+ * Cooldown settings for a guild.
  */
 export interface GuildCooldownConfig {
-  /** Whether cooldown logic is enabled for this guild. */
+  /** Enable/disable the cooldown logic. */
   useCooldown: boolean;
-  /** Duration of the cooldown period, in seconds. */
+  /** Cooldown duration in seconds. */
   cooldownTime: number;
-  /** If true, applies cooldown separately per user rather than globally. */
+  /** Apply separately per user rather than globally. */
   perUserCooldown: boolean;
 }
 
 /**
- * Default settings used when no guild-specific config is found.
+ * Combined per-guild settings.
  */
+export interface GuildConfig {
+  /** Message cooldown parameters. */
+  cooldown: GuildCooldownConfig;
+  /** Random interjection rate: 1-in-N chance. */
+  interjectionRate: number;
+}
+
+/** Default cooldown: on, 2.5 s, per-user. */
 export const defaultCooldownConfig: GuildCooldownConfig = {
   useCooldown: true,
   cooldownTime: 2.5,
   perUserCooldown: true,
 };
 
-/**
- * In-memory cache of guild-specific cooldown configurations.
- * Maps guild ID strings to their respective config objects.
- */
-export const guildCooldownConfigs = new Map<string, GuildCooldownConfig>();
+/** Default interjection rate: once in 50 messages. */
+export const defaultInterjectionRate = 50;
+
+/** In-memory cache of all guilds’ settings. */
+export const guildConfigs = new Map<string, GuildConfig>();
 
 /**
- * Load persisted guild cooldown configurations from disk into memory.
- * If the file is missing or malformed, logs a warning and continues with defaults.
- *
- * @async
- * @returns Promise<void> that resolves when loading is complete.
+ * Load all guild configs from disk (one file).
+ * Falls back to defaults if file missing or malformed.
  */
-export async function loadGuildCooldownConfigs(): Promise<void> {
-  logger.debug("[config] Loading guild cooldown configurations from disk");
+export async function loadGuildConfigs(): Promise<void> {
+  logger.debug("[config] Loading guild configurations");
   try {
-    const file = await fs.readFile(CONFIG_FILE, "utf-8");
-    const parsed: Record<string, GuildCooldownConfig> = JSON.parse(file);
-    for (const [guildId, config] of Object.entries(parsed)) {
-      guildCooldownConfigs.set(guildId, config);
+    const raw = await fs.readFile(GUILD_CONFIG_FILE, "utf-8");
+    const parsed = JSON.parse(raw) as Record<string, GuildConfig>;
+    for (const [guildId, cfg] of Object.entries(parsed)) {
+      guildConfigs.set(guildId, {
+        cooldown: cfg.cooldown ?? defaultCooldownConfig,
+        interjectionRate: cfg.interjectionRate ?? defaultInterjectionRate,
+      });
       logger.debug(
-        `[config] Loaded config for guildId=${guildId}: ${JSON.stringify(config)}`
+        `[config] Loaded config for guild=${guildId}: ${JSON.stringify(
+          guildConfigs.get(guildId)
+        )}`
       );
     }
-    logger.info("✅ Loaded guild cooldown configurations from disk");
-  } catch (err) {
-    const e = err as NodeJS.ErrnoException;
-    if (e.code === "ENOENT") {
-      logger.warn("⚠️ No cooldown config file found; using default settings");
+    logger.info("✅ Loaded all guild configurations");
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      logger.warn(
+        "[config] No guild config file found; will use defaults until first save"
+      );
     } else {
-      logger.error("❌ Failed to load guild cooldown configs:", err);
+      logger.error("[config] Failed to load guild configurations:", err);
     }
   }
 }
 
 /**
- * Persist the current in-memory guild cooldown configurations to disk.
- * Creates the data directory if it does not exist.
- *
- * @async
- * @returns Promise<void> that resolves when save is complete.
+ * Save all guild configs back to disk in one JSON.
+ * Ensures the data directory exists.
  */
-export async function saveGuildCooldownConfigs(): Promise<void> {
-  logger.debug("[config] Saving guild cooldown configurations to disk");
+export async function saveGuildConfigs(): Promise<void> {
+  logger.debug("[config] Saving guild configurations");
   try {
-    const toSave: Record<string, GuildCooldownConfig> = {};
-    for (const [guildId, config] of guildCooldownConfigs.entries()) {
-      toSave[guildId] = config;
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    const toSave: Record<string, GuildConfig> = {};
+    for (const [guildId, cfg] of guildConfigs.entries()) {
+      toSave[guildId] = cfg;
       logger.debug(
-        `[config] Queued config for guildId=${guildId}: ${JSON.stringify(config)}`
+        `[config] Queued config for guild=${guildId}: ${JSON.stringify(cfg)}`
       );
     }
-
-    // Ensure data directory exists
-    const dir = DATA_DIR;
-    await fs.mkdir(dir, { recursive: true });
-    logger.debug(`[config] Ensured data directory exists at ${dir}`);
-
-    // Write JSON with 2-space indentation for readability
-    await fs.writeFile(CONFIG_FILE, JSON.stringify(toSave, null, 2), "utf-8");
-    logger.info("✅ Saved guild cooldown configurations to disk");
-  } catch (err) {
-    logger.error("❌ Failed to save guild cooldown configs:", err);
+    await fs.writeFile(
+      GUILD_CONFIG_FILE,
+      JSON.stringify(toSave, null, 2),
+      "utf-8"
+    );
+    logger.info("✅ Saved all guild configurations");
+  } catch (err: unknown) {
+    logger.error("[config] Failed to save guild configurations:", err);
   }
 }
