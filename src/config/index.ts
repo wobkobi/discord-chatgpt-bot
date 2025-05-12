@@ -40,7 +40,7 @@ export const defaultCooldownConfig: GuildCooldownConfig = {
 };
 
 /** Default interjection rate: once in 50 messages. */
-export const defaultInterjectionRate = 50;
+export const defaultInterjectionRate = 200;
 
 /** In-memory cache of all guilds’ settings. */
 export const guildConfigs = new Map<string, GuildConfig>();

@@ -47,6 +47,11 @@ const pendingInterjections = new Map<string, boolean>();
 const interjectionTimers = new Map<string, NodeJS.Timeout>();
 
 /**
+ * Tracks how many non-bot messages have occurred since the last bot message in each channel.
+ */
+const messagesSinceBot = new Map<string, number>();
+
+/**
  * Creates and returns the handler for new Discord messages.
  * @param openai - The OpenAI client instance for generating replies.
  * @param client - The Discord client instance.
@@ -61,6 +66,15 @@ export async function handleNewMessage(
     logger.debug(
       `[messageController] Received message id=${message.id} from userId=${message.author.id}`
     );
+
+    // Update message count by channel
+    const chan = message.channel.id;
+    if (message.author.bot) {
+      messagesSinceBot.set(chan, 0);
+    } else {
+      const prev = messagesSinceBot.get(chan) ?? 0;
+      messagesSinceBot.set(chan, prev + 1);
+    }
 
     // Ignore bot messages, @everyone pings, or if bot not ready
     if (
@@ -80,8 +94,9 @@ export async function handleNewMessage(
     const guildId = message.guild?.id ?? null;
     const chance = getInterjectionChance(guildId);
 
-    // Randomly queue an interjection if not directly mentioned
-    if (!mentioned && Math.random() < chance) {
+    // Only queue random interjection if at least 10 user messages since last bot
+    const count = messagesSinceBot.get(message.channel.id) ?? 0;
+    if (!mentioned && count >= 10 && Math.random() < chance) {
       pendingInterjections.set(key, true);
       logger.debug(`[messageController] Queued interjection for ${key}`);
     }
@@ -212,7 +227,11 @@ export async function handleNewMessage(
           total += msg.content.length;
           const time = new Date(msg.createdTimestamp).toLocaleTimeString(
             systemLocale,
-            { hour12: false, hour: "2-digit", minute: "2-digit" }
+            {
+              hour12: false,
+              hour: "2-digit",
+              minute: "2-digit",
+            }
           );
           lines.push(`[${time}] ${msg.author.username}: ${msg.content}`);
         }
