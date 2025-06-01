@@ -4,10 +4,9 @@
  *   invokes OpenAI for chat completion, renders LaTeX maths to PNG buffers, and returns
  *   the cleaned reply text alongside any generated maths images.
  *
- *   - Leverages persona and memory stores
- *   - Applies Discord markdown formatting
- *   - Handles quota, model-not-found, and generic errors with graceful fallbacks
- *   - Emits detailed debug logs for each major step
+ * Only injects persona/metadata/memory on the first turn of a thread (when convoHistory.size ≤ 1).
+ * On existing reply chains (convoHistory.size > 1), only sends the new user messages.
+ * Renders any LaTeX formulas into PNG buffers for Discord display.
  */
 
 import { Block, ChatMessage } from "@/types";
@@ -16,7 +15,7 @@ import { ChatCompletionMessageParam } from "openai/resources/chat";
 import { cloneMemory } from "../store/cloneMemory.js";
 import { userMemory } from "../store/userMemory.js";
 import { applyDiscordMarkdownFormatting } from "../utils/discordHelpers.js";
-import { getRequired } from "../utils/env.js";
+import { getOptional, getRequired } from "../utils/env.js";
 import { loadUserMemory } from "../utils/fileUtils.js";
 import { renderMathToPng } from "../utils/latexRenderer.js";
 import logger from "../utils/logger.js";
@@ -27,12 +26,16 @@ import {
 } from "./characterService.js";
 
 /**
- * Maximum number of memory entries to include in the prompt.
+ * MAX_MEMORY_ENTRIES
+ * Maximum number of memory entries to include in the prompt (defaults to 50).
  */
-const MAX_MEMORY_ENTRIES = parseInt(getRequired("MAX_MEMORY_ENTRIES"), 10);
+const MAX_MEMORY_ENTRIES = parseInt(
+  getOptional("MAX_MEMORY_ENTRIES") ?? "50",
+  10
+);
 
 /**
- * A ChatGPT message that may carry multiple block contents.
+ * A ChatGPT message type that carries multiple block‐style contents.
  */
 export interface ChatCompletionBlockMessage {
   role: "user";
@@ -41,14 +44,19 @@ export interface ChatCompletionBlockMessage {
 
 /**
  * Generate an AI reply given the conversation context and extracted inputs.
- * @param convoHistory   Map of message IDs to ChatMessage objects for the current thread.
+ *
+ * If convoHistory.size ≤ 1, this is a “new thread”: persona, system metadata,
+ * and long-term memory blocks will be injected first.
+ * If convoHistory.size > 1, this is a follow-up turn: we skip persona/metadata/memory
+ * and only send the accumulated user messages.
+ * @param convoHistory   Map of message IDs → ChatMessage for the current thread.
  * @param currentId      Discord message ID of the latest user message.
  * @param openai         Initialized OpenAI client instance.
- * @param userId         Discord user ID, used to select persona and memory.
- * @param channelHistory Optional recent channel messages (with timestamps).
+ * @param userId         Discord user ID (used for selecting persona & memory).
+ * @param channelHistory Optional string of recent channel messages (timestamped).
  * @param blocks         Pre-extracted multimodal blocks (text, images, files).
  * @param genericUrls    Remaining URLs to include as text blocks.
- * @returns              Promise resolving to reply text and any maths image buffers.
+ * @returns              Promise resolving to { text, mathBuffers }.
  */
 export async function generateReply(
   convoHistory: Map<string, ChatMessage>,
@@ -60,13 +68,16 @@ export async function generateReply(
   genericUrls: string[] = []
 ): Promise<{ text: string; mathBuffers: Buffer[] }> {
   logger.debug(
-    `[replyService] generateReply invoked (userId=${userId}, currentId=${currentId})`
+    `[replyService] generateReply invoked (userId=${userId}, currentId=${currentId}, historySize=${convoHistory.size})`
   );
 
+  // If ≤1 message in convoHistory (i.e. first turn of a thread), treat as a new thread
+  const isNewThread = convoHistory.size <= 1;
+
   /**
-   * Strip mentions and custom emotes, retaining emote names.
-   * @param text - The raw message content to sanitize.
-   * @returns The sanitized string with mentions and emote tags removed.
+   * Strip mentions & custom emotes, keeping only names.
+   * @param text  Raw user or system text to sanitize.
+   * @returns     Cleaned text with bot/user mentions removed.
    */
   const sanitiseInput = (text: string): string =>
     text
@@ -75,9 +86,7 @@ export async function generateReply(
       .replace(/<a?:(\w+):\d+>/g, "$1")
       .trim();
 
-  /**
-   * Ensure long-term memory is loaded for this user.
-   */
+  // Load long-term memory for this user (only once)
   if (!userMemory.has(userId)) {
     try {
       const memEntries = await loadUserMemory(userId);
@@ -93,9 +102,7 @@ export async function generateReply(
     }
   }
 
-  /**
-   * Feature toggles and model selection.
-   */
+  // Feature toggles & model selection
   const useFT = getRequired("USE_FINE_TUNED_MODEL") === "true";
   const usePersona = getRequired("USE_PERSONA") === "true";
   const modelName = useFT ? getRequired("FINE_TUNED_MODEL_NAME")! : "gpt-4o";
@@ -103,70 +110,60 @@ export async function generateReply(
     `[replyService] Config → useFT=${useFT}, usePersona=${usePersona}, model=${modelName}`
   );
 
-  /**
-   * Sequence of messages for the chat completion API.
-   */
+  // Build messages array for OpenAI
   const messages: Array<
     ChatCompletionMessageParam | ChatCompletionBlockMessage
   > = [];
 
-  /**
-   * Persona prompt (if enabled).
-   */
-  if (usePersona) {
-    const personaPrompt = await getCharacterDescription(userId);
+  if (isNewThread) {
+    // Persona prompt (if enabled)
+    if (usePersona) {
+      const personaPrompt = await getCharacterDescription(userId);
+      messages.push({
+        role: "system",
+        content: sanitiseInput(personaPrompt),
+      });
+      logger.debug("[replyService] Added persona prompt");
+    }
+
+    // System metadata (timestamp, markdown guide)
+    const systemMeta = getSystemMetadata();
     messages.push({
       role: "system",
-      content: sanitiseInput(personaPrompt),
+      content: sanitiseInput(systemMeta),
     });
-    logger.debug("[replyService] Added persona prompt");
+    logger.debug("[replyService] Added system metadata");
+
+    // Clone/user memory (up to MAX_MEMORY_ENTRIES)
+    const rawMem =
+      userId === cloneUserId
+        ? cloneMemory.get(userId) || []
+        : userMemory.get(userId) || [];
+    const memToUse = rawMem.slice(-MAX_MEMORY_ENTRIES);
+    if (memToUse.length) {
+      const entries = memToUse.map((e) => sanitiseInput(e.content));
+      const prefix =
+        userId === cloneUserId ? "Clone memory:" : "Long-term memory:";
+      messages.push({
+        role: "system",
+        content: `${prefix}\n${entries.join("\n")}`,
+      });
+      logger.debug(
+        `[replyService] Added memory block (${entries.length} entries)`
+      );
+    }
+
+    // Optional channel history
+    if (channelHistory) {
+      messages.push({
+        role: "system",
+        content: `Recent channel history:\n${sanitiseInput(channelHistory)}`,
+      });
+      logger.debug("[replyService] Added channel history");
+    }
   }
 
-  /**
-   * System metadata (timestamp and markdown guide).
-   */
-  const systemMeta = getSystemMetadata();
-  messages.push({
-    role: "system",
-    content: sanitiseInput(systemMeta),
-  });
-  logger.debug("[replyService] Added system metadata");
-
-  /**
-   * Clone- or user-specific memory block, limited to max entries.
-   */
-  const rawMem =
-    userId === cloneUserId
-      ? cloneMemory.get(userId) || []
-      : userMemory.get(userId) || [];
-  const memToUse = rawMem.slice(-MAX_MEMORY_ENTRIES);
-  if (memToUse.length) {
-    const entries = memToUse.map((e) => sanitiseInput(e.content));
-    const prefix =
-      userId === cloneUserId ? "Clone memory:" : "Long-term memory:";
-    messages.push({
-      role: "system",
-      content: `${prefix}\n${entries.join("\n")}`,
-    });
-    logger.debug(
-      `[replyService] Added memory block (${entries.length} entries)`
-    );
-  }
-
-  /**
-   * Optional channel history.
-   */
-  if (channelHistory) {
-    messages.push({
-      role: "system",
-      content: `Recent channel history:\n${sanitiseInput(channelHistory)}`,
-    });
-    logger.debug("[replyService] Added channel history");
-  }
-
-  /**
-   * Construct user blocks from conversation history and inputs.
-   */
+  // Always append the new user turn (text + blocks + generic URLs)
   const userBlocks: Block[] = [];
   let cursor: string | undefined = currentId;
   while (cursor) {
@@ -185,31 +182,30 @@ export async function generateReply(
   for (const url of genericUrls) {
     userBlocks.push({ type: "text", text: sanitiseInput(`[link] ${url}`) });
   }
-  // Push block message without using `any`
   messages.push({ role: "user", content: userBlocks });
+
   logger.info(
-    `📝 Prompt → model=${modelName}, total user blocks=${userBlocks.length}`
+    `📝 Prompt → model=${modelName}, user blocks=${userBlocks.length}, newThread=${isNewThread}`
   );
 
-  /**
-   * Call OpenAI completion with error handling.
-   */
+  // Call OpenAI with higher variance settings
   let contentText: string;
   try {
     const res = await openai.chat.completions.create({
       model: modelName,
       messages: messages as unknown as ChatCompletionMessageParam[],
-      temperature: 0.7,
-      top_p: 0.8,
-      frequency_penalty: 0.3,
-      presence_penalty: 0.1,
+      temperature: 0.9,
+      top_p: 0.9,
+      frequency_penalty: 0.1,
+      presence_penalty: 0.0,
       max_tokens: 512,
       user: userId,
     });
+
     contentText = res.choices[0]?.message.content?.trim() || "";
     if (!contentText) throw new Error("Empty AI response");
 
-    // Log token usage for prompt and completion
+    // Log token usage
     logger.info(
       `📝 Prompt tokens: ${res.usage?.prompt_tokens ?? "?"}, completion tokens: ${res.usage?.completion_tokens ?? "?"}`
     );
@@ -228,9 +224,7 @@ export async function generateReply(
     };
   }
 
-  /**
-   * Render any LaTeX formulas to PNG buffers.
-   */
+  // Render any LaTeX formulas to PNG buffers
   const mathBuffers: Buffer[] = [];
   const formulaRegex =
     /```(?:latex)?\s*([\s\S]+?)\s*```|\\\[(.+?)\\\]|\\\$\\\$(.+?)\\\$\\\$/gs;
@@ -244,9 +238,7 @@ export async function generateReply(
     }
   }
 
-  /**
-   * Clean up reply text by stripping formulas and collapsing blank lines.
-   */
+  // Strip formulas from text and collapse blank lines
   const replyText = contentText
     .replace(formulaRegex, "")
     .replace(/(\r?\n){2,}/g, "\n")
