@@ -34,9 +34,7 @@ const MAX_MEMORY_ENTRIES = parseInt(
   10
 );
 
-/**
- * A ChatGPT message type that carries multiple block‐style contents.
- */
+// A ChatGPT message type that carries multiple block‐style contents.
 export interface ChatCompletionBlockMessage {
   role: "user";
   content: Block[];

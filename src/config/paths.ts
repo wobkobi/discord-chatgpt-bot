@@ -37,7 +37,7 @@ export const CLONE_MEM_DIR = join(DATA_DIR, "memory", "clone");
  */
 export const CONV_DIR = join(DATA_DIR, "conversations");
 
-/** ─── Logging directories ─────────────────────────────────────────────────── */
+// ─── Logging directories ───────────────────────────────────────────────────
 
 /**
  * Root directory for all Winston log files (combined and others).

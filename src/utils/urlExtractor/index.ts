@@ -16,9 +16,7 @@ import { extractGiphyGifs, extractTenorGifs } from "./extractGifs.js";
 import { extractInlineImages } from "./extractInlineImages.js";
 import { extractSocialEmbeds } from "./extractSocialEmbeds.js";
 
-/**
- * Recognises image file extensions for inline detection.
- */
+// Recognises image file extensions for inline detection.
 export const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif)(?:\?|$)/i;
 
 /**

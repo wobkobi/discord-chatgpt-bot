@@ -43,19 +43,17 @@ const extension = !isRunningTS && existsSync(buildCommandsPath) ? ".js" : ".ts";
 
 logger.info(`🔍 Loading commands from ${commandsPath}`);
 
-/**
- * Structure of a slash-command module.
- */
+// Structure of a slash-command module.
 interface SlashCommandModule {
-  /** Slash command builder data. */
+  // Slash command builder data.
   data: SlashCommandBuilder;
-  /** Handler for executing the command interaction. */
+  // Handler for executing the command interaction.
   execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
 }
 
 declare module "discord.js" {
   interface Client {
-    /** Collection of registered slash commands by name. */
+    // Collection of registered slash commands by name.
     commands: Collection<string, SlashCommandModule>;
   }
 }
@@ -71,14 +69,10 @@ export function isBotReady(): boolean {
 }
 
 (async () => {
-  /**
-   * Initialise environment variables.
-   */
+  // Initialise environment variables.
   initialiseEnv();
 
-  /**
-   * Load per-guild configurations (cooldown + interjectionRate).
-   */
+  // Load per-guild configurations (cooldown + interjectionRate).
   try {
     await loadGuildConfigs();
     logger.info("✅ Guild configurations loaded");
@@ -86,9 +80,7 @@ export function isBotReady(): boolean {
     logger.warn("⚠️ Could not load guild configurations; using defaults", err);
   }
 
-  /**
-   * Initialise Discord client with required intents and partials.
-   */
+  // Initialise Discord client with required intents and partials.
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -100,9 +92,7 @@ export function isBotReady(): boolean {
   });
   client.commands = new Collection<string, SlashCommandModule>();
 
-  /**
-   * Dynamically load slash command modules from commandsPath.
-   */
+  // Dynamically load slash command modules from commandsPath.
   const commandFiles = readdirSync(commandsPath).filter((f) =>
     f.endsWith(extension)
   );
@@ -151,15 +141,11 @@ export function isBotReady(): boolean {
     }
   }
 
-  /**
-   * Initialise OpenAI client.
-   */
+  // Initialise OpenAI client.
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
   let messageHandler: (message: Message) => Promise<void>;
 
-  /**
-   * Set up event listeners for client readiness, messages, and interactions.
-   */
+  // Set up event listeners for client readiness, messages, and interactions.
   client.once("ready", async () => {
     logger.info(`🤖 Logged in as ${client.user!.tag}`);
 
@@ -221,9 +207,7 @@ export function isBotReady(): boolean {
     process.exit(0);
   });
 
-  /**
-   * Start the bot by logging in.
-   */
+  // Start the bot by logging in.
   client
     .login(process.env.BOT_TOKEN)
     .then(() => logger.info("🚀 Login successful."))

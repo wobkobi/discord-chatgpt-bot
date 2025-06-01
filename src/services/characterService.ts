@@ -18,15 +18,13 @@ import logger from "../utils/logger.js";
 // Use createRequire to load JSON in ESM without import assertions
 const require = createRequire(import.meta.url);
 
-/**
- * Shape of persona configuration loaded from JSON.
- */
+// Shape of persona configuration loaded from JSON.
 interface PersonaConfig {
-  /** Discord user ID of the clone to apply clone-specific styling. */
+  // Discord user ID of the clone to apply clone-specific styling.
   cloneUserId: string;
-  /** Base system prompt describing the assistant’s persona. */
+  // Base system prompt describing the assistant’s persona.
   baseDescription: string;
-  /** Guide for formatting markdown appropriately. */
+  // Guide for formatting markdown appropriately.
   markdownGuide: string;
 }
 
@@ -43,7 +41,7 @@ try {
   throw err;
 }
 
-/** ID of the clone user, used to apply clone-specific behaviours. */
+// ID of the clone user, used to apply clone-specific behaviours.
 export const cloneUserId = persona.cloneUserId;
 
 /**
