@@ -10,9 +10,7 @@ import { GeneralMemoryEntry } from "@/types";
 import { loadUserMemory, saveUserMemory } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
 
-/**
- * In-memory cache of user memory entries, keyed by Discord user ID.
- */
+// In-memory cache of user memory entries, keyed by Discord user ID.
 export const userMemory = new Map<string, GeneralMemoryEntry[]>();
 
 /**

@@ -10,39 +10,35 @@ import fs from "fs/promises";
 import logger from "../utils/logger.js";
 import { DATA_DIR, GUILD_CONFIG_FILE } from "./paths.js";
 
-/**
- * Cooldown settings for a guild.
- */
+// Cooldown settings for a guild.
 export interface GuildCooldownConfig {
-  /** Enable/disable the cooldown logic. */
+  // Enable/disable the cooldown logic.
   useCooldown: boolean;
-  /** Cooldown duration in seconds. */
+  // Cooldown duration in seconds.
   cooldownTime: number;
-  /** Apply separately per user rather than globally. */
+  // Apply separately per user rather than globally.
   perUserCooldown: boolean;
 }
 
-/**
- * Combined per-guild settings.
- */
+// Combined per-guild settings.
 export interface GuildConfig {
-  /** Message cooldown parameters. */
+  // Message cooldown parameters.
   cooldown: GuildCooldownConfig;
-  /** Random interjection rate: 1-in-N chance. */
+  // Random interjection rate: 1-in-N chance.
   interjectionRate: number;
 }
 
-/** Default cooldown: on, 2.5 s, per-user. */
+// Default cooldown: on, 2.5 s, per-user.
 export const defaultCooldownConfig: GuildCooldownConfig = {
   useCooldown: true,
   cooldownTime: 2.5,
   perUserCooldown: true,
 };
 
-/** Default interjection rate: once in 50 messages. */
-export const defaultInterjectionRate = 50;
+// Default interjection rate: once in 200 messages.
+export const defaultInterjectionRate = 200;
 
-/** In-memory cache of all guilds’ settings. */
+// In-memory cache of all guilds’ settings.
 export const guildConfigs = new Map<string, GuildConfig>();
 
 /**

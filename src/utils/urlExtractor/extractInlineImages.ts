@@ -13,9 +13,7 @@ import { Message } from "discord.js";
 import { stripQuery } from "../discordHelpers.js";
 import logger from "../logger.js";
 
-/**
- * Hosts allowed for direct inline image embedding.
- */
+// Hosts allowed for direct inline image embedding.
 const TRUSTED_IMAGE_HOSTS = [
   "cdn.discordapp.com",
   "media.tenor.com",

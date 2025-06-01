@@ -10,9 +10,7 @@ import { GeneralMemoryEntry } from "@/types";
 import { loadCloneMemory, saveCloneMemory } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
 
-/**
- * In-memory cache of clone memory entries, keyed by Discord user ID.
- */
+// In-memory cache of clone memory entries, keyed by Discord user ID.
 export const cloneMemory = new Map<string, GeneralMemoryEntry[]>();
 
 /**

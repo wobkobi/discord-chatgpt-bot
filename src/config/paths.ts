@@ -7,44 +7,28 @@
  */
 import { join } from "path";
 
-/**
- * Base directory under which all persisted bot data lives.
- */
+// Base directory under which all persisted bot data lives.
 export const DATA_DIR = join(process.cwd(), "data");
 
-/**
- * Single JSON file for all per-guild settings (cooldown + interjection rate).
- */
+// Single JSON file for all per-guild settings (cooldown + interjection rate).
 export const GUILD_CONFIG_FILE = join(DATA_DIR, "guildConfigs.json");
 
-/**
- * Sub-directory for LaTeX renderer outputs (SVG, PNG, JPG).
- */
+// Sub-directory for LaTeX renderer outputs (SVG, PNG, JPG).
 export const OUTPUT_DIR = join(DATA_DIR, "output");
 
-/**
- * Directory for storing long-term memory entries for regular users.
- */
+// Directory for storing long-term memory entries for regular users.
 export const USER_MEM_DIR = join(DATA_DIR, "memory", "user");
 
-/**
- * Directory for storing memory entries specific to the clone persona.
- */
+// Directory for storing memory entries specific to the clone persona.
 export const CLONE_MEM_DIR = join(DATA_DIR, "memory", "clone");
 
-/**
- * Directory for persisting conversation thread data.
- */
+// Directory for persisting conversation thread data.
 export const CONV_DIR = join(DATA_DIR, "conversations");
 
-/** ─── Logging directories ─────────────────────────────────────────────────── */
+//Logging directories
 
-/**
- * Root directory for all Winston log files (combined and others).
- */
+// Root directory for all Winston log files (combined and others).
 export const LOGS_DIR = join(process.cwd(), "logs");
 
-/**
- * Sub-directory under LOGS_DIR for error-level logs with daily rotation.
- */
+// Sub-directory under LOGS_DIR for error-level logs with daily rotation.
 export const LOGS_ERROR_DIR = join(LOGS_DIR, "error");

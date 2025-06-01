@@ -38,18 +38,14 @@ const logFormat = printf((info: TransformableInfo) => {
   return bell + base;
 });
 
-/**
- * Shared format pipeline: attaches timestamps, includes error stacks, and applies custom printf.
- */
+// Shared format pipeline: attaches timestamps, includes error stacks, and applies custom printf.
 const commonFormat = combine(
   timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
   errors({ stack: true }),
   logFormat
 );
 
-/**
- * Console transport with colourised output for readability.
- */
+// Console transport with colourised output for readability.
 const consoleTransport = new winston.transports.Console({
   format: combine(colorize({ all: true }), commonFormat),
 });

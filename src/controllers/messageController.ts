@@ -3,9 +3,9 @@
  * @description Manages incoming Discord messages: applies rate-limits, tracks conversation threads,
  *   updates long-term memory, triggers AI reply generation, and persists chat state.
  *
- *   Utilises debounced interjection logic, thread summarisation, URL/file extraction,
- *   emoji shortcode substitution, and ensures seamless multi-turn dialogue handling.
- *   Each major step emits detailed debug logs for traceability.
+ * Utilises debounced interjection logic, thread summarisation, URL/file extraction,
+ * emoji shortcode substitution, and ensures seamless multi-turn dialogue handling.
+ * Each major step emits detailed debug logs for traceability.
  */
 
 import { ConversationContext } from "@/types";
@@ -33,24 +33,29 @@ import {
 import { extractInputs } from "../utils/urlExtractor/index.js";
 
 /**
+ * MESSAGE_LIMIT
  * Maximum number of messages a thread can hold before summarisation to memory.
  */
 const MESSAGE_LIMIT = 10;
 
-// In-memory storage for conversation histories and thread mappings
+// In-memory storage for conversation histories (per guild/user) and thread-ID mappings
 const histories = new Map<string, Map<string, ConversationContext>>();
 const idMaps = new Map<string, Map<string, string>>();
 
-// Flags for pending interjections per user/channel
+// Pending interjection flags and debounce timers
 const pendingInterjections = new Map<string, boolean>();
-// Debounce timers to wait for user to finish typing
 const interjectionTimers = new Map<string, NodeJS.Timeout>();
 
 /**
- * Creates and returns the handler for new Discord messages.
- * @param openai - The OpenAI client instance for generating replies.
- * @param client - The Discord client instance.
- * @returns A function to handle 'messageCreate' events.
+ * messagesSinceBot
+ * Tracks how many non-bot messages have occurred since the last bot message in each channel.
+ */
+const messagesSinceBot = new Map<string, number>();
+
+/**
+ * @param openai  The OpenAI client instance.
+ * @param client  The Discord client instance.
+ * @returns       A function to handle 'messageCreate' events.
  */
 export async function handleNewMessage(
   openai: OpenAI,
@@ -62,7 +67,16 @@ export async function handleNewMessage(
       `[messageController] Received message id=${message.id} from userId=${message.author.id}`
     );
 
-    // Ignore bot messages, @everyone pings, or if bot not ready
+    // Update per-channel “since-bot” counter
+    const chanId = message.channel.id;
+    if (message.author.bot) {
+      messagesSinceBot.set(chanId, 0);
+    } else {
+      const prev = messagesSinceBot.get(chanId) ?? 0;
+      messagesSinceBot.set(chanId, prev + 1);
+    }
+
+    // Ignore bot messages, @everyone pings, or if bot isn’t ready
     if (
       message.author.bot ||
       (message.guild && message.mentions.everyone) ||
@@ -73,20 +87,20 @@ export async function handleNewMessage(
     }
 
     // Debounced interjection logic
-    const key = `${message.channel.id}_${message.author.id}`;
+    const key = `${chanId}_${message.author.id}`;
     const mentioned = message.guild
       ? message.mentions.has(client.user!.id)
       : false;
     const guildId = message.guild?.id ?? null;
     const chance = getInterjectionChance(guildId);
 
-    // Randomly queue an interjection if not directly mentioned
-    if (!mentioned && Math.random() < chance) {
+    // Only queue a random interjection if ≥10 user messages since last bot
+    const userCount = messagesSinceBot.get(chanId) ?? 0;
+    if (!mentioned && userCount >= 10 && Math.random() < chance) {
       pendingInterjections.set(key, true);
       logger.debug(`[messageController] Queued interjection for ${key}`);
     }
 
-    // If queued, debounce for 2s to let user finish typing
     if (pendingInterjections.has(key)) {
       interjectionTimers.get(key)?.unref();
       clearTimeout(interjectionTimers.get(key)!);
@@ -113,35 +127,42 @@ export async function handleNewMessage(
       return;
     }
 
-    // Otherwise skip
+    // Otherwise, skip if it’s in a guild but not mentioned
     if (message.guild && !mentioned) {
       logger.debug("[messageController] No mention or interjection; skipping");
       return;
     }
 
     /**
-     * Performs the reply workflow: cleans input, handles memory & cooldowns,
-     * manages threading, summarises if needed, builds AI prompt, and sends reply.
-     * @param interject - True if this is a spontaneous interjection.
+     * Performs the entire reply workflow:
+     * Cleans input and shows typing indicator
+     * Updates clone memory if it’s the clone user
+     * Enforces per-user/guild cooldown
+     * Manages threading and conversation history
+     * Summarises to memory if MESSAGE_LIMIT is reached
+     * Pre-extracts URLs/attachments
+     * Prepends a “random interjection” instruction if needed
+     * Calls generateReply(...) and sends the result
+     * Persists the assistant’s reply into memory and disk
+     * @param interject  True if this is a spontaneous interjection (not a “mentioned” reply).
      */
     async function doReply(interject: boolean) {
-      // Strip out bot mention tags
+      // Strip bot mentions from the content
       const cleanContent = message.content
         .replace(new RegExp(`<@!?${client.user!.id}>`, "g"), "")
         .trim();
 
-      // Show typing indicator
+      // Show “typing” indicator
       if (message.channel.isTextBased() && "sendTyping" in message.channel) {
         logger.debug("[messageController] Sending typing indicator");
         message.channel.sendTyping().catch(() => {});
       }
 
-      // --- Memory & Cooldown ---
+      // Memory & Cooldown
       const userId = message.author.id;
       const guildId = message.guild?.id || null;
       logger.debug(`[messageController] userId=${userId}, guildId=${guildId}`);
 
-      // Update clone memory if this user is the clone
       if (userId === cloneUserId) {
         logger.debug("[messageController] Updating clone memory");
         updateCloneMemory(userId, {
@@ -150,7 +171,6 @@ export async function handleNewMessage(
         });
       }
 
-      // Enforce per-user/guild cooldown
       const { useCooldown, cooldownTime } = getCooldownConfig(guildId);
       const cdKey = getCooldownContext(guildId, userId);
       if (useCooldown && isCooldownActive(cdKey)) {
@@ -164,7 +184,7 @@ export async function handleNewMessage(
         manageCooldown(guildId, userId);
       }
 
-      // --- Threading & History ---
+      // Threading & History
       const contextKey = guildId || userId;
       if (!histories.has(contextKey)) {
         histories.set(contextKey, new Map());
@@ -173,6 +193,7 @@ export async function handleNewMessage(
           `[messageController] Initialized history for ${contextKey}`
         );
       }
+
       const convIds = idMaps.get(contextKey)!;
       const replyToId = message.reference?.messageId;
       const threadId =
@@ -188,6 +209,7 @@ export async function handleNewMessage(
         logger.debug("[messageController] Started new thread context");
       }
       const conversation = convMap.get(threadId)!;
+
       const userChat = createChatMessage(
         message,
         "user",
@@ -197,7 +219,7 @@ export async function handleNewMessage(
       conversation.messages.set(message.id, userChat);
       logger.debug("[messageController] Stored user message in history");
 
-      // --- Recent Channel History (500 chars max) ---
+      // Recent Channel History (up to 500 chars)
       let channelHistory: string | undefined;
       try {
         logger.debug("[messageController] Fetching recent channel history");
@@ -227,14 +249,14 @@ export async function handleNewMessage(
         );
       }
 
-      // --- Input Extraction ---
+      // Input Extraction (URLs, attachments, etc.)
       logger.debug("[messageController] Extracting inputs");
       const { blocks, genericUrls } = await extractInputs(message);
       logger.debug(
         `[messageController] Extracted ${blocks.length} blocks, ${genericUrls.length} URLs`
       );
 
-      // --- Thread Summarisation ---
+      // Thread Summarisation (if MESSAGE_LIMIT reached)
       if (conversation.messages.size >= MESSAGE_LIMIT) {
         logger.debug("[messageController] MESSAGE_LIMIT reached; summarising");
         const summary = summariseConversation(conversation);
@@ -246,7 +268,7 @@ export async function handleNewMessage(
         conversation.messages.clear();
       }
 
-      // --- Random Interjection Instruction ---
+      // Random Interjection Instruction (if applicable)
       if (interject) {
         blocks.unshift({
           type: "text" as const,
@@ -257,7 +279,7 @@ export async function handleNewMessage(
         );
       }
 
-      // --- Generate & Send Reply ---
+      // Generate & Send AI Reply
       logger.debug("[messageController] Generating AI reply");
       const { text, mathBuffers } = await generateReply(
         conversation.messages,
@@ -284,17 +306,19 @@ export async function handleNewMessage(
       const sent = await message.reply({ content: output, files: attachments });
       logger.debug(`[messageController] Reply sent id=${sent.id}`);
 
-      // --- Persist Assistant Message ---
+      // Persist Assistant Message
       conversation.messages.set(
         sent.id,
         createChatMessage(sent, "assistant", client.user!.username)
       );
       logger.debug("[messageController] Recorded assistant message");
+
       await updateUserMemory(userId, {
         timestamp: Date.now(),
         content: `Replied: ${text}`,
       });
       logger.debug("[messageController] Updated user memory");
+
       await saveConversations(histories, idMaps);
       logger.debug("[messageController] Saved conversations to disk");
     }
@@ -302,9 +326,8 @@ export async function handleNewMessage(
 }
 
 /**
- * Preloads stored conversations for each guild when the bot starts.
- * @param client - The Discord client instance.
- * @returns Promise<void> once loading completes.
+ * @param client  The Discord client instance.
+ * @returns       Promise<void> once all guild conversations are loaded.
  */
 export async function run(client: Client): Promise<void> {
   logger.debug("[messageController] Preloading conversations for all guilds");
