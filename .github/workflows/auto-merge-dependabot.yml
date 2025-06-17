@@ -18,33 +18,31 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const owner = context.repo.owner;
-            const repo  = context.repo.repo;
-            const ref   = context.payload.check_suite.head_sha;
-            const prs   = context.payload.check_suite.pull_requests || [];
-
-            for (const refPR of prs) {
+            const prs = context.payload.check_suite.pull_requests || [];
+            for (const ref of prs) {
               // 1) Fetch full PR data
               const { data: pr } = await github.rest.pulls.get({
-                owner, repo, pull_number: refPR.number
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: ref.number
               });
 
-              // 2) Only Dependabot-authored PRs
+              // 2) Only Dependabot PRs
               if (pr.user?.login !== 'dependabot[bot]') continue;
 
-              // 3a) Check combined status state
-              const { data: combined } = await github.rest.repos.getCombinedStatusForRef({
-                owner, repo, ref: pr.head.sha
+              // 3) Ensure all status checks on this SHA are green
+              const { data: statuses } = await github.rest.repos.listCommitStatusesForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: pr.head.sha
               });
-              if (combined.state !== 'success') continue;
+              if (statuses.some(s => s.state !== 'success')) continue;
 
-              // 3b) Check every Check Run
-              const { data: runs } = await github.rest.checks.listForRef({
-                owner, repo, ref: pr.head.sha
-              });
-              if (runs.check_runs.some(r => r.conclusion !== 'success')) continue;
-
-              // 4) All green → squash-merge
+              // 4) Merge with squash
               await github.rest.pulls.merge({
-                owner,
-                rep
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                merge_method: 'squash'
+              });
+            }
