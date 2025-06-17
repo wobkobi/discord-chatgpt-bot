@@ -18,31 +18,33 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const prs = context.payload.check_suite.pull_requests || [];
-            for (const ref of prs) {
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            const ref   = context.payload.check_suite.head_sha;
+            const prs   = context.payload.check_suite.pull_requests || [];
+
+            for (const refPR of prs) {
               // 1) Fetch full PR data
               const { data: pr } = await github.rest.pulls.get({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: ref.number
+                owner, repo, pull_number: refPR.number
               });
 
-              // 2) Only Dependabot PRs
+              // 2) Only Dependabot-authored PRs
               if (pr.user?.login !== 'dependabot[bot]') continue;
 
-              // 3) Ensure all status checks on this SHA are green
-              const { data: statuses } = await github.rest.repos.listCommitStatusesForRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: pr.head.sha
+              // 3a) Check combined status state
+              const { data: combined } = await github.rest.repos.getCombinedStatusForRef({
+                owner, repo, ref: pr.head.sha
               });
-              if (statuses.some(s => s.state !== 'success')) continue;
+              if (combined.state !== 'success') continue;
 
-              // 4) Merge with squash
-              await github.rest.pulls.merge({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: pr.number,
-                merge_method: 'squash'
+              // 3b) Check every Check Run
+              const { data: runs } = await github.rest.checks.listForRef({
+                owner, repo, ref: pr.head.sha
               });
-            }
+              if (runs.check_runs.some(r => r.conclusion !== 'success')) continue;
+
+              // 4) All green → squash-merge
+              await github.rest.pulls.merge({
+                owner,
+                rep
