@@ -21,7 +21,16 @@ import {
 import { getRequired } from "../utils/env.js";
 import logger from "../utils/logger.js";
 
-const OWNER_ID = getRequired("OWNER_ID");
+// Safely load OWNER_ID
+let OWNER_ID = "";
+try {
+  OWNER_ID = getRequired("OWNER_ID");
+} catch (err) {
+  logger.warn(
+    "[setcooldown] OWNER_ID not configured; permission checks will treat no one as owner.",
+    err
+  );
+}
 
 /**
  * Helper to turn seconds into a human-friendly string.
@@ -74,7 +83,16 @@ export async function execute(
   logger.debug(`[setcooldown] Invoked by userId=${userId}`);
 
   // Permission check
+  if (!OWNER_ID) {
+    await interaction.reply({
+      content:
+        "⚠️ Bot owner is not configured. Cooldown cannot be changed right now.",
+      ephemeral: true,
+    });
+    return;
+  }
   const isOwner = OWNER_ID === userId;
+
   const isAdmin = interaction.memberPermissions?.has(
     PermissionsBitField.Flags.Administrator
   );

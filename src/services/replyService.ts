@@ -180,7 +180,24 @@ export async function generateReply(
   for (const url of genericUrls) {
     userBlocks.push({ type: "text", text: sanitiseInput(`[link] ${url}`) });
   }
-  messages.push({ role: "user", content: userBlocks });
+
+  const flattenedUserContent = userBlocks
+    .map((blk) => {
+      switch (blk.type) {
+        case "text":
+          return blk.text;
+        case "image_url":
+          return `[image: ${blk.image_url.url}]`;
+        case "file":
+          return `[file: ${blk.file.filename}]`;
+      }
+    })
+    .join("\n");
+
+  messages.push({
+    role: "user",
+    content: sanitiseInput(flattenedUserContent),
+  });
 
   logger.info(
     `📝 Prompt → model=${modelName}, user blocks=${userBlocks.length}, newThread=${isNewThread}`

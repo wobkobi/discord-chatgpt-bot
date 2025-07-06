@@ -7,6 +7,7 @@
  *   - Exposes:
  *     • getCharacterDescription: base persona + clone style snippet (if clone)
  *     • getSystemMetadata: timestamp + markdown guide (always injected)
+ *   If persona.json is missing, falls back to empty defaults rather than crashing.
  */
 
 import { DateTime } from "luxon";
@@ -36,13 +37,27 @@ try {
   logger.debug(
     `[characterService] Loaded persona config (cloneUserId=${persona.cloneUserId})`
   );
-} catch (err) {
-  logger.error("[characterService] Failed to load persona config:", err);
-  throw err;
+} catch (err: unknown) {
+  // If persona.json is missing, log a warning and use empty defaults.
+  if ((err as NodeJS.ErrnoException).code === "MODULE_NOT_FOUND") {
+    logger.warn(
+      "[characterService] persona.json not found; continuing with defaults."
+    );
+    persona = {
+      cloneUserId: "",
+      baseDescription: "",
+      markdownGuide: "",
+    };
+  } else {
+    logger.error("[characterService] Failed to load persona config:", err);
+    throw err;
+  }
 }
 
 // ID of the clone user, used to apply clone-specific behaviours.
 export const cloneUserId = persona.cloneUserId;
+// Markdown formatting guide from persona configuration.
+export const markdownGuide = persona.markdownGuide;
 
 /**
  * Builds the persona description for system prompts.
@@ -59,7 +74,7 @@ export async function getCharacterDescription(
 
   let description = persona.baseDescription;
 
-  if (userId === cloneUserId) {
+  if (userId === cloneUserId && userMemory.has(userId)) {
     const entries = userMemory.get(userId) || [];
     const snippet = entries.length
       ? entries
@@ -88,6 +103,6 @@ export function getSystemMetadata(): string {
     .setLocale(systemLocale)
     .toLocaleString(DateTime.DATETIME_MED_WITH_SECONDS);
 
-  const meta = `_Current time: ${now}_` + `\n\n${persona.markdownGuide}`;
+  const meta = `_Current time: ${now}_` + `\n\n${markdownGuide}`;
   return meta;
 }

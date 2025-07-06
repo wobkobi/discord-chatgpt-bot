@@ -125,19 +125,25 @@ export function isBotReady(): boolean {
    * @returns Promise that resolves when commands are registered.
    */
   async function registerGlobalCommands(): Promise<void> {
+    const clientId = process.env.CLIENT_ID;
+    if (!clientId) {
+      logger.warn(
+        "[index] CLIENT_ID not set; skipping slash‐command registration."
+      );
+      return;
+    }
+
     const rest = new REST({ version: "10" }).setToken(process.env.BOT_TOKEN!);
     const payload = Array.from(client.commands.values()).map((c) =>
       c.data.toJSON()
     );
     try {
       logger.info("🌐 Registering global slash commands...");
-      await rest.put(Routes.applicationCommands(process.env.CLIENT_ID!), {
-        body: payload,
-      });
+      await rest.put(Routes.applicationCommands(clientId), { body: payload });
       logger.info("✅ Slash commands registered.");
     } catch (err) {
-      logger.error("❌ Failed to register slash commands:", err);
-      throw err;
+      logger.error("[index] Failed to register global commands:", err);
+      // don’t re-throw — let the bot keep running without commands
     }
   }
 
