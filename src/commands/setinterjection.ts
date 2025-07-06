@@ -19,7 +19,15 @@ import {
 import { getRequired } from "../utils/env.js";
 import logger from "../utils/logger.js";
 
-const OWNER_ID = getRequired("OWNER_ID");
+// Safely load OWNER_ID
+let OWNER_ID = "";
+try {
+  OWNER_ID = getRequired("OWNER_ID");
+} catch {
+  logger.warn(
+    "[setinterjection] OWNER_ID not configured; permission checks will fail safe."
+  );
+}
 
 /**
  * Slash command definition for /setinterjection.
@@ -50,6 +58,14 @@ export async function execute(
   logger.debug(`[setinterjection] Invoked by userId=${userId}`);
 
   // Permission check
+  if (!OWNER_ID) {
+    await interaction.reply({
+      content:
+        "⚠️ Bot owner is not configured. Cannot change interjection rate.",
+      ephemeral: true,
+    });
+    return;
+  }
   const isOwner = OWNER_ID === userId;
   const isAdmin = interaction.memberPermissions?.has(
     PermissionsBitField.Flags.Administrator
