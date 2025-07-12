@@ -12,3 +12,5 @@ node_modules
 .eslintcache
 data/*
 logs/*
+
+/fine tuning

@@ -9,6 +9,7 @@
 import { GeneralMemoryEntry } from "@/types";
 import { loadUserMemory, saveUserMemory } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
+import { trimMemory } from "../utils/trimMemory.js";
 
 // In-memory cache of user memory entries, keyed by Discord user ID.
 export const userMemory = new Map<string, GeneralMemoryEntry[]>();
@@ -46,6 +47,7 @@ export async function updateUserMemory(
     );
 
     const updatedEntries = existingEntries.concat(entry);
+    const trimmedEntries = trimMemory(updatedEntries);
     userMemory.set(userId, updatedEntries);
     logger.debug(
       `[userMemory] Cache updated for userId=${userId}, total entries=${updatedEntries.length}`
@@ -54,7 +56,7 @@ export async function updateUserMemory(
     logger.debug(
       `[userMemory] Persisting ${updatedEntries.length} entries for userId=${userId}`
     );
-    await saveUserMemory(userId, updatedEntries);
+    await saveUserMemory(userId, trimmedEntries);
     logger.info(`📥 User memory persisted for user ${userId}`);
   } catch (err) {
     logger.error(
