@@ -9,6 +9,7 @@
 import { GeneralMemoryEntry } from "@/types";
 import { loadCloneMemory, saveCloneMemory } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
+import { trimMemory } from "../utils/trimMemory.js";
 
 // In-memory cache of clone memory entries, keyed by Discord user ID.
 export const cloneMemory = new Map<string, GeneralMemoryEntry[]>();
@@ -47,6 +48,7 @@ export async function updateCloneMemory(
     );
 
     const updatedEntries = existingEntries.concat(entry);
+    const trimmedEntries = trimMemory(updatedEntries);
     cloneMemory.set(userId, updatedEntries);
     logger.debug(
       `[cloneMemory] Cache updated for userId=${userId}, total entries=${updatedEntries.length}`
@@ -55,7 +57,7 @@ export async function updateCloneMemory(
     logger.debug(
       `[cloneMemory] Persisting ${updatedEntries.length} entries for userId=${userId}`
     );
-    await saveCloneMemory(userId, updatedEntries);
+    await saveCloneMemory(userId, trimmedEntries);
     logger.info(`📥 Clone memory persisted for user ${userId}`);
   } catch (err) {
     logger.error(
