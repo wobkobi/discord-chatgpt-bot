@@ -25,7 +25,7 @@ src/
 
    ```bash
    git clone https://github.com/wobkobi/ChatGPT-Discord-Bot.git
-   cd chatgpt-x-discord
+   cd ChatGPT-Discord-Bot
    npm install
    ```
 
