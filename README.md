@@ -30,9 +30,7 @@ src/
    ```
 
 2. **Configure**
-
    - Copy the environment example and fill in your values:
-
      - On macOS/Linux:
 
        ```bash
@@ -46,7 +44,6 @@ src/
        ```
 
    - Copy the persona template:
-
      - On macOS/Linux:
 
        ```bash
@@ -72,10 +69,12 @@ src/
 ## ⚙️ Usage
 
 - **/ask** – Ask the bot privately (ephemeral reply).
+- **/setbot** – (Owner) Change the bot’s username and/or avatar image.
 - **/setCooldown** – (Owner/Admin) Adjust rate limits per-guild.
+- **/setinterjection** – (Owner/Admin) Configure random interjection frequency.
 - **/stop** – (Owner) Gracefully shut down the bot.
 
-Mention the bot (or wait for a random interjection) in any channel to see persona-driven replies, math rendering (`\[ … \]` → attached images), and image/file support.
+Mention the bot (or wait for a random interjection) in any channel to see persona-driven replies, math rendering (`\[ … \]` → attached images), image/file support, and more.
 
 ---
 
