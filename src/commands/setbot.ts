@@ -3,13 +3,14 @@ import { getRequired } from "../utils/env.js";
 import logger from "../utils/logger.js";
 
 const OWNER_ID = getRequired("OWNER_ID");
+const BOT_TOKEN = getRequired("BOT_TOKEN");
 
 /**
  * /setbot
  * @description Change the bot’s username and/or avatar image (Owner only).
- *  Provide one or both of the options:
- * - `name`: New username (≤32 characters)
- * - `avatar`: Image file to set as the new avatar
+ * Provide one or both of the options:
+ *  `name`: New username (max 32 chars)
+ *  `avatar`: Image file to set as the new bot avatar
  */
 export const data = new SlashCommandBuilder()
   .setName("setbot")
@@ -17,7 +18,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((opt) =>
     opt
       .setName("name")
-      .setDescription("New username for the bot (max 32 characters)")
+      .setDescription("New username (max 32 characters)")
       .setRequired(false)
   )
   .addAttachmentOption((opt) =>
@@ -36,6 +37,8 @@ export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
   const userId = interaction.user.id;
+
+  // Only the configured owner can run this
   if (userId !== OWNER_ID) {
     await interaction.reply({
       content: "🚫 You are not allowed to change my identity.",
@@ -44,57 +47,70 @@ export async function execute(
     return;
   }
 
-  const newName = interaction.options.getString("name");
-  const attachment = interaction.options.getAttachment("avatar");
+  // Ensure REST has valid token for patch requests
+  interaction.client.rest.setToken(BOT_TOKEN);
 
-  if (!newName && !attachment) {
+  const newName = interaction.options.getString("name");
+  const avatarAttachment = interaction.options.getAttachment("avatar");
+
+  if (!newName && !avatarAttachment) {
     await interaction.reply({
-      content: "❌ Please provide at least one option: `name` or `avatar`.",
+      content: "❌ Provide at least one option: `name` or `avatar`.",
       ephemeral: true,
     });
     return;
   }
 
   await interaction.deferReply({ ephemeral: true });
-  const results: string[] = [];
 
-  // Change username if provided
+  const editPayload: { username?: string; avatar?: Buffer } = {};
+
+  // Prepare username change
   if (newName) {
     const trimmed = newName.trim();
     if (trimmed.length > 32) {
-      results.push("❌ Username must be 32 characters or fewer.");
-    } else {
-      try {
-        await interaction.client.user!.setUsername(trimmed);
-        logger.info(
-          `[setbot] Username changed to "${trimmed}" by owner ${userId}`
-        );
-        results.push(`✅ Username updated to **${trimmed}**.`);
-      } catch (err) {
-        logger.error("[setbot] Failed to set username:", err);
-        results.push("⚠️ Failed to update username.");
-      }
+      await interaction.editReply({
+        content: "❌ Username must be 32 characters or fewer.",
+      });
+      return;
+    }
+    editPayload.username = trimmed;
+  }
+
+  // Prepare avatar change
+  if (avatarAttachment) {
+    if (!avatarAttachment.contentType?.startsWith("image/")) {
+      await interaction.editReply({
+        content: "❌ Provided file is not a valid image.",
+      });
+      return;
+    }
+    try {
+      const res = await fetch(avatarAttachment.url);
+      const arrayBuffer = await res.arrayBuffer();
+      editPayload.avatar = Buffer.from(arrayBuffer);
+    } catch (err) {
+      logger.error("[setbot] Failed to fetch avatar image:", err);
+      await interaction.editReply({
+        content: "⚠️ Could not download the avatar image.",
+      });
+      return;
     }
   }
 
-  // Change avatar if provided
-  if (attachment) {
-    if (!attachment.contentType?.startsWith("image/")) {
-      results.push("❌ Provided file is not a valid image.");
-    } else {
-      try {
-        const res = await fetch(attachment.url);
-        const arrayBuffer = await res.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        await interaction.client.user!.setAvatar(buffer);
-        logger.info(`[setbot] Avatar updated by owner ${userId}`);
-        results.push("✅ Avatar updated successfully.");
-      } catch (err) {
-        logger.error("[setbot] Failed to set avatar:", err);
-        results.push("⚠️ Failed to update avatar.");
-      }
-    }
+  // Execute a single edit request
+  try {
+    await interaction.client.user!.edit(editPayload);
+    logger.info(`[setbot] Identity updated by owner ${userId}`);
+    const messages: string[] = [];
+    if (editPayload.username)
+      messages.push(`✅ Username updated to **${editPayload.username}**.`);
+    if (editPayload.avatar) messages.push("✅ Avatar updated successfully.");
+    await interaction.editReply({ content: messages.join("\n") });
+  } catch (err) {
+    logger.error("[setbot] Failed to update identity:", err);
+    await interaction.editReply({
+      content: "⚠️ Something went wrong while updating my identity.",
+    });
   }
-
-  await interaction.editReply({ content: results.join(" \n") });
 }
