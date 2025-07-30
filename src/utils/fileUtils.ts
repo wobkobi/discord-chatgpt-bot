@@ -6,7 +6,8 @@
  *   Provides debug logging at each step via logger.debug to trace file operations and encryption flows.
  */
 
-import { ChatMessage, ConversationContext, GeneralMemoryEntry } from "@/types";
+import { ChatMessage, ConversationContext } from "@/types/chat.js";
+import { GeneralMemoryEntry } from "@/types/memory.js";
 import {
   createCipheriv,
   createDecipheriv,

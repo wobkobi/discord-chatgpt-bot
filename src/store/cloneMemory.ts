@@ -6,7 +6,7 @@
  *   Uses debug logging to trace loads, updates, and saves.
  */
 
-import { GeneralMemoryEntry } from "@/types";
+import { GeneralMemoryEntry } from "@/types/memory.js";
 import { loadCloneMemory, saveCloneMemory } from "../utils/fileUtils.js";
 import logger from "../utils/logger.js";
 import { trimMemory } from "../utils/trimMemory.js";

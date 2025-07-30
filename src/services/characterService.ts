@@ -10,6 +10,7 @@
  *   If persona.json is missing, falls back to empty defaults rather than crashing.
  */
 
+import { PersonaConfig } from "@/types/persona.js";
 import { DateTime } from "luxon";
 import { createRequire } from "module";
 import path from "path";
@@ -18,16 +19,6 @@ import logger from "../utils/logger.js";
 
 // Use createRequire to load JSON in ESM without import assertions
 const require = createRequire(import.meta.url);
-
-// Shape of persona configuration loaded from JSON.
-interface PersonaConfig {
-  // Discord user ID of the clone to apply clone-specific styling.
-  cloneUserId: string;
-  // Base system prompt describing the assistant’s persona.
-  baseDescription: string;
-  // Guide for formatting markdown appropriately.
-  markdownGuide: string;
-}
 
 let persona: PersonaConfig;
 try {

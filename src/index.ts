@@ -28,10 +28,11 @@ import { loadGuildConfigs } from "./config/index.js";
 import { handleNewMessage, run } from "./controllers/messageController.js";
 import { initialiseCloneMemory } from "./store/cloneMemory.js";
 import { initialiseUserMemory } from "./store/userMemory.js";
-import { initialiseEnv } from "./utils/env.js";
+import { getRequired, initialiseEnv } from "./utils/env.js";
 import logger from "./utils/logger.js";
 
 // Determine environment and command path
+const BOT_TOKEN = getRequired("BOT_TOKEN");
 const __filename = fileURLToPath(import.meta.url);
 const isRunningTS = __filename.endsWith(".ts");
 const buildCommandsPath = join(resolve(), "build", "commands");
@@ -90,6 +91,7 @@ export function isBotReady(): boolean {
     ],
     partials: [Partials.Channel],
   });
+  client.rest.setToken(BOT_TOKEN);
   client.commands = new Collection<string, SlashCommandModule>();
 
   // Dynamically load slash command modules from commandsPath.
@@ -215,7 +217,7 @@ export function isBotReady(): boolean {
 
   // Start the bot by logging in.
   client
-    .login(process.env.BOT_TOKEN)
+    .login(BOT_TOKEN)
     .then(() => logger.info("🚀 Login successful."))
     .catch((err) => logger.error("❌ Login failed:", err));
 })();

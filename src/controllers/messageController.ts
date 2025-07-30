@@ -8,7 +8,7 @@
  * Each major step emits detailed debug logs for traceability.
  */
 
-import { ConversationContext } from "@/types";
+import { ConversationContext } from "@/types/chat.js";
 import { Client, Message } from "discord.js";
 import OpenAI from "openai";
 import { isBotReady } from "../index.js";

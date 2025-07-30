@@ -6,7 +6,7 @@
  *   Handles stickers, attachments, inline/base64 images, Tenor and Giphy GIFs, social media embeds,
  *   and collates generic URLs. Detailed debug logging via logger.debug on each step.
  */
-import { Block } from "@/types";
+import { Block } from "@/types/block.js";
 import { Message } from "discord.js";
 import { stripQuery } from "../discordHelpers.js";
 import { getOptional, getRequired } from "../env.js";

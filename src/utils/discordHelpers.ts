@@ -8,7 +8,7 @@
  *   Emits detailed debug logs via logger.debug at each helper entry and exit.
  */
 
-import { ChatMessage, ConversationContext } from "@/types";
+import { ChatMessage, ConversationContext } from "@/types/chat.js";
 import { Guild, Message } from "discord.js";
 import logger from "./logger.js";
 
