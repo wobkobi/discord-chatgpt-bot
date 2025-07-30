@@ -9,7 +9,7 @@
  *   - Logs detailed debug info via logger.debug and errors via logger.error.
  */
 
-import { Block } from "@/types";
+import { Block } from "@/types/block.js";
 import { GiphyFetch } from "@giphy/js-fetch-api";
 import { Message } from "discord.js";
 import { stripQuery } from "../discordHelpers.js";

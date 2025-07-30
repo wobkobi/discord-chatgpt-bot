@@ -9,10 +9,10 @@
  *   for traceability.
  */
 
+import { GuildConfig } from "@/types/guild.js";
 import {
   defaultCooldownConfig,
   defaultInterjectionRate,
-  GuildConfig,
   guildConfigs,
 } from "../config/index.js";
 import logger from "./logger.js";

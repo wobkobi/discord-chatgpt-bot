@@ -1,4 +1,4 @@
-import type { GeneralMemoryEntry } from "@/types";
+import { GeneralMemoryEntry } from "@/types/memory";
 
 /** Maximum total characters we keep per-user */
 export const MAX_MEMORY_CHARS = 1_000;

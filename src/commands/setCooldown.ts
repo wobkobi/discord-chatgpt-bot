@@ -6,6 +6,7 @@
  *   Validates permissions, updates the guild’s combined config object,
  *   and persists via saveGuildConfigs().
  */
+import { GuildConfig } from "@/types/guild.js";
 import {
   ChatInputCommandInteraction,
   PermissionsBitField,
@@ -14,7 +15,6 @@ import {
 import {
   defaultCooldownConfig,
   defaultInterjectionRate,
-  GuildConfig,
   guildConfigs,
   saveGuildConfigs,
 } from "../config/index.js";

@@ -8,7 +8,7 @@
  *   - Avoids duplicates via seen set.
  *   - Logs progress and warnings via logger.debug and logger.warn.
  */
-import { Block } from "@/types";
+import { Block } from "@/types/block.js";
 import { Message } from "discord.js";
 import { stripQuery } from "../discordHelpers.js";
 import logger from "../logger.js";

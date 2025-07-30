@@ -9,7 +9,7 @@
  *   - Skips duplicate or unwanted URLs via skip set.
  *   - Logs detailed debug info and warnings.
  */
-import { Block } from "@/types";
+import { Block } from "@/types/block.js";
 import { Message } from "discord.js";
 import sanitizeHtml from "sanitize-html";
 import { stripQuery } from "../discordHelpers.js";

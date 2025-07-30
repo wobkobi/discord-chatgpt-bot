@@ -9,7 +9,8 @@
  * Renders any LaTeX formulas into PNG buffers for Discord display.
  */
 
-import { Block, ChatMessage } from "@/types";
+import { Block, ChatCompletionBlockMessage } from "@/types/block.js";
+import { ChatMessage } from "@/types/chat.js";
 import OpenAI, { APIError } from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat";
 import { cloneMemory } from "../store/cloneMemory.js";
@@ -19,6 +20,7 @@ import { getOptional, getRequired } from "../utils/env.js";
 import { loadUserMemory } from "../utils/fileUtils.js";
 import { renderMathToPng } from "../utils/latexRenderer.js";
 import logger from "../utils/logger.js";
+import { resolveTenorLinks } from "../utils/tenorResolver.js";
 import {
   cloneUserId,
   getCharacterDescription,
@@ -33,12 +35,6 @@ const MAX_MEMORY_ENTRIES = parseInt(
   getOptional("MAX_MEMORY_ENTRIES") ?? "50",
   10
 );
-
-// A ChatGPT message type that carries multiple block‐style contents.
-export interface ChatCompletionBlockMessage {
-  role: "user";
-  content: Block[];
-}
 
 /**
  * Generate an AI reply given the conversation context and extracted inputs.
@@ -254,10 +250,16 @@ export async function generateReply(
   }
 
   // Strip formulas from text and collapse blank lines
-  const replyText = contentText
+  const strippedText = contentText
     .replace(formulaRegex, "")
     .replace(/(\r?\n){2,}/g, "\n")
     .trim();
 
+  let replyText = strippedText;
+  try {
+    replyText = await resolveTenorLinks(strippedText);
+  } catch (err) {
+    logger.warn("[replyService] Tenor resolution failed:", err);
+  }
   return { text: replyText, mathBuffers };
 }

@@ -7,7 +7,7 @@
  *     embedding or skipping based on content type.
  *   Includes detailed debug logs via logger.debug.
  */
-import { Block } from "@/types";
+import { Block } from "@/types/block.js";
 import { Message } from "discord.js";
 import fetch from "node-fetch";
 import { stripQuery } from "../discordHelpers.js";

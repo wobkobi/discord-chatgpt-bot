@@ -6,27 +6,10 @@
  *
  *   In-memory cache, JSON persistence, default values, and detailed logging.
  */
+import { GuildConfig, GuildCooldownConfig } from "@/types/guild.js";
 import fs from "fs/promises";
 import logger from "../utils/logger.js";
 import { DATA_DIR, GUILD_CONFIG_FILE } from "./paths.js";
-
-// Cooldown settings for a guild.
-export interface GuildCooldownConfig {
-  // Enable/disable the cooldown logic.
-  useCooldown: boolean;
-  // Cooldown duration in seconds.
-  cooldownTime: number;
-  // Apply separately per user rather than globally.
-  perUserCooldown: boolean;
-}
-
-// Combined per-guild settings.
-export interface GuildConfig {
-  // Message cooldown parameters.
-  cooldown: GuildCooldownConfig;
-  // Random interjection rate: 1-in-N chance.
-  interjectionRate: number;
-}
 
 // Default cooldown: on, 2.5 s, per-user.
 export const defaultCooldownConfig: GuildCooldownConfig = {
