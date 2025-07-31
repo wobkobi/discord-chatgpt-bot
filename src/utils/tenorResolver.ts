@@ -4,34 +4,32 @@ import { getOptional } from "../utils/env.js";
 import logger from "../utils/logger.js";
 
 const TENOR_API_KEY = getOptional("TENOR_API_KEY");
+const SEARCH_LIMIT = 3;
 
 /**
  * Scans text for Tenor "view" URLs, extracts search keywords,
- * queries the Tenor API, and replaces each link with a working GIF URL.
- * @param content The text potentially containing tenor.com/view/... links.
- * @returns The text with tenor links replaced by actual GIF URLs.
+ * queries the Tenor API up to a SEARCH_LIMIT, verifies each GIF URL,
+ * and replaces each link with the first valid GIF URL found.
+ * @param inputText The text potentially containing tenor.com/view/... links.
+ * @returns The text with valid Tenor GIF links replaced.
  */
-export async function resolveTenorLinks(content: string): Promise<string> {
+export async function resolveTenorLinks(inputText: string): Promise<string> {
   if (!TENOR_API_KEY) {
     logger.warn("[tenor] No TENOR_API_KEY provided; skipping resolution");
-    return content;
+    return inputText;
   }
-
-  const tenorRe = /https?:\/\/tenor\.com\/view\/([\w-]+)-\d+/g;
-  let match: RegExpExecArray | null;
-  const processed = new Set<string>();
 
   logger.debug("[tenor] Starting link resolution");
 
-  while ((match = tenorRe.exec(content))) {
-    const fullMatch = match[0];
-    const slug = match[1];
+  // Find every Tenor view URL and its slug
+  const matches = Array.from(
+    inputText.matchAll(/https?:\/\/tenor\.com\/view\/([\w-]+)-\d+/g),
+    (m) => ({ full: m[0], slug: m[1] })
+  );
+  const replacements = new Map<string, string>();
 
-    if (processed.has(slug)) {
-      logger.debug(`[tenor] Skipping already-processed slug: ${slug}`);
-      continue;
-    }
-    processed.add(slug);
+  for (const { full: originalUrl, slug } of matches) {
+    if (replacements.has(originalUrl)) continue;
 
     // Clean up slug: remove trailing '-gif' and numbers
     const query = slug
@@ -39,37 +37,59 @@ export async function resolveTenorLinks(content: string): Promise<string> {
       .replace(/-\d+$/, "")
       .split("-")
       .join(" ");
-
-    const url = `https://api.tenor.com/v1/search?q=${encodeURIComponent(
+    const apiUrl = `https://api.tenor.com/v1/search?q=${encodeURIComponent(
       query
-    )}&key=${TENOR_API_KEY}&limit=1`;
+    )}&key=${TENOR_API_KEY}&limit=${SEARCH_LIMIT}`;
 
     try {
-      logger.debug(`[tenor] Fetching GIF for query="${query}" from ${url}`);
-      const resp = await fetch(url);
-
+      logger.debug(`[tenor] Searching for "${query}" (limit=${SEARCH_LIMIT})`);
+      const resp = await fetch(apiUrl);
       if (!resp.ok) {
-        logger.warn(`[tenor] Non-2xx response for "${query}": ${resp.status}`);
+        logger.warn(`[tenor] Search failed (${resp.status}) for "${query}"`);
         continue;
       }
 
-      const json = (await resp.json()) as TenorSearchResponse;
-      const gifUrl = json.results?.[0]?.media?.[0]?.gif?.url;
+      const { results } = (await resp.json()) as TenorSearchResponse;
+      // Try each result until a valid GIF is found
+      let validGif: string | null = null;
+      for (const result of results) {
+        const gifUrl = result.media?.[0]?.gif?.url;
+        if (!gifUrl) continue;
 
-      if (gifUrl) {
-        logger.debug(
-          `[tenor] Replacing all instances of "${fullMatch}" with: ${gifUrl}`
-        );
-        content = content.replaceAll(fullMatch, gifUrl);
+        // Verify the GIF URL actually resolves to an image
+        try {
+          const headResp = await fetch(gifUrl, { method: "HEAD" });
+          const contentType = headResp.headers.get("content-type") ?? "";
+          if (headResp.ok && contentType.startsWith("image")) {
+            validGif = gifUrl;
+            break;
+          } else {
+            logger.warn(
+              `[tenor] Invalid HEAD for ${gifUrl} status=${headResp.status} ct=${contentType}`
+            );
+          }
+        } catch (headErr) {
+          logger.error(`[tenor] HEAD check error for ${gifUrl}`, headErr);
+        }
+      }
+
+      if (validGif) {
+        logger.debug(`[tenor] Replacing "${originalUrl}" → ${validGif}`);
+        replacements.set(originalUrl, validGif);
       } else {
-        logger.debug(`[tenor] No GIF results for slug="${slug}"`);
+        logger.debug(`[tenor] No valid GIF found for slug="${slug}"`);
       }
     } catch (err) {
-      logger.error(`[tenor] Error resolving "${slug}"`, err);
-      // leave original links intact
+      logger.error(`[tenor] Search error for slug="${slug}"`, err);
     }
   }
 
+  // Apply replacements
+  let resolvedText = inputText;
+  for (const [originalUrl, gifUrl] of replacements) {
+    resolvedText = resolvedText.replaceAll(originalUrl, gifUrl);
+  }
+
   logger.debug("[tenor] Finished link resolution");
-  return content;
+  return resolvedText;
 }
