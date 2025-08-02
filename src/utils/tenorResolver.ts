@@ -15,7 +15,8 @@ const SEARCH_LIMIT = 3;
 
 /**
  * Replace each tenor.com/view/... link in the text with the first valid GIF
- * URL returned by the Tenor V2 search API. Logs detailed steps.
+ * URL returned by the Tenor V2 search API. Direct GIF URLs (media.tenor.com/*.gif)
+ * are detected and left intact, with a debug log entry. Detailed logging throughout.
  * @param inputText The text potentially containing tenor.com/view/... links.
  * @returns The text with valid Tenor GIF links replaced.
  */
@@ -27,8 +28,10 @@ export async function resolveTenorLinks(inputText: string): Promise<string> {
 
   logger.debug("[tenor] Starting link resolution");
 
-  const viewRe = /https?:\/\/tenor\.com\/view\/([\w-]+)-\d+/g;
-  const matches = Array.from(inputText.matchAll(viewRe), (m) => ({
+  // Detect direct GIF URLs (media.tenor.com or c.tenor.com) and log them at info level
+  const tenorRe =
+    /https?:\/\/(?:[\w-]+\.)?tenor\.com\/(?:(?:view\/([\w-]+)-\d+)|(?:[\w/.-]+\.gif))/g;
+  const matches = Array.from(inputText.matchAll(tenorRe), (m) => ({
     full: m[0],
     slug: m[1],
   }));
@@ -92,7 +95,7 @@ async function searchGif(query: string): Promise<string | null> {
     `&country=${COUNTRY}`;
 
   logger.debug(`[tenor] Fetching V2 API: ${apiUrl}`);
-  let resp = null;
+  let resp;
   try {
     resp = await fetch(apiUrl);
   } catch (err: unknown) {
