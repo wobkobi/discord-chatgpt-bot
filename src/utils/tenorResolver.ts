@@ -5,6 +5,7 @@ import logger from "../utils/logger.js";
 
 const TENOR_API_KEY = getOptional("TENOR_API_KEY");
 const CLIENT_KEY = getOptional("TENOR_CLIENT_KEY") || "discord-bot";
+// Derive country code from system locale, fallback to 'US'
 const COUNTRY = (() => {
   const locale = Intl.DateTimeFormat().resolvedOptions().locale;
   const parts = locale.split("-");
@@ -14,8 +15,7 @@ const SEARCH_LIMIT = 3;
 
 /**
  * Replace each tenor.com/view/... link in the text with the first valid GIF
- * URL returned by the Tenor V2 search API (HEAD‑checked).
- * Falls back to the original link if no valid GIF is found.
+ * URL returned by the Tenor V2 search API. Logs detailed steps.
  * @param inputText The text potentially containing tenor.com/view/... links.
  * @returns The text with valid Tenor GIF links replaced.
  */
@@ -32,7 +32,7 @@ export async function resolveTenorLinks(inputText: string): Promise<string> {
     full: m[0],
     slug: m[1],
   }));
-  logger.debug(`[tenor] Found ${matches.length} link(s) to resolve`);
+  logger.debug(`[tenor] Found ${matches.length} tenor.com links to resolve`);
 
   const replacements = new Map<string, string>();
 
@@ -60,10 +60,10 @@ export async function resolveTenorLinks(inputText: string): Promise<string> {
     }
 
     if (gifUrl) {
-      logger.debug(`[tenor] Will replace ${full} → ${gifUrl}`);
+      logger.debug(`[tenor] Will replace "${full}" → ${gifUrl}`);
       replacements.set(full, gifUrl);
     } else {
-      logger.debug(`[tenor] No valid GIF found for link: ${full}`);
+      logger.warn(`[tenor] No valid GIF found for link: ${full}`);
     }
   }
 
@@ -83,23 +83,29 @@ export async function resolveTenorLinks(inputText: string): Promise<string> {
  * @returns A valid GIF URL or null if none found.
  */
 async function searchGif(query: string): Promise<string | null> {
-  const url =
-    `https://tenor.googleapis.com/v2/search?` +
-    `key=${TENOR_API_KEY}&client_key=${CLIENT_KEY}` +
-    `&q=${encodeURIComponent(query)}&limit=${SEARCH_LIMIT}` +
-    `&media_filter=gif&country=${COUNTRY}`;
+  const apiUrl =
+    `https://tenor.googleapis.com/v2/search?key=${TENOR_API_KEY}` +
+    `&client_key=${CLIENT_KEY}` +
+    `&q=${encodeURIComponent(query)}` +
+    `&limit=${SEARCH_LIMIT}` +
+    `&media_filter=gif` +
+    `&country=${COUNTRY}`;
 
-  logger.debug(`[tenor] Fetching V2 API: ${url}`);
-  let resp;
+  logger.debug(`[tenor] Fetching V2 API: ${apiUrl}`);
+  let resp = null;
   try {
-    resp = await fetch(url);
+    resp = await fetch(apiUrl);
   } catch (err: unknown) {
     logger.error(`[tenor] Network error for "${query}"`, err);
     return null;
   }
 
+  if (resp.status === 429) {
+    logger.error(`[tenor] Rate limited (429) for query="${query}"`);
+    return null;
+  }
   if (!resp.ok) {
-    logger.warn(`[tenor] Search failed (${resp.status}) for "${query}"`);
+    logger.warn(`[tenor] Search HTTP ${resp.status} for "${query}"`);
     return null;
   }
 
@@ -116,7 +122,7 @@ async function searchGif(query: string): Promise<string | null> {
   for (const r of results) {
     const candidate = r.media_formats?.gif?.url;
     if (!candidate) continue;
-    logger.debug(`[tenor] Checking candidate GIF: ${candidate}`);
+    logger.debug(`[tenor] Checking candidate GIF HEAD: ${candidate}`);
     try {
       const head = await fetch(candidate, { method: "HEAD" });
       const ct = head.headers.get("content-type") || "";
@@ -132,5 +138,7 @@ async function searchGif(query: string): Promise<string | null> {
       logger.error(`[tenor] HEAD check error for ${candidate}`, err);
     }
   }
+
+  logger.warn(`[tenor] No HEAD-validated GIF found for "${query}"`);
   return null;
 }
