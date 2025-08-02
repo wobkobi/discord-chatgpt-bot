@@ -1,11 +1,11 @@
 export interface TenorMediaFormat {
   url: string;
 }
-export interface TenorMedia {
-  gif: TenorMediaFormat;
-}
 export interface TenorResult {
-  media: TenorMedia[];
+  media_formats?: {
+    gif?: TenorMediaFormat;
+    [k: string]: unknown; // ignore other formats safely
+  };
 }
 export interface TenorSearchResponse {
   results: TenorResult[];

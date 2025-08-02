@@ -150,7 +150,11 @@ export function isBotReady(): boolean {
   }
 
   // Initialise OpenAI client.
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+  const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY!,
+    timeout: 2 * 60 * 1000,
+  });
+
   let messageHandler: (message: Message) => Promise<void>;
 
   // Set up event listeners for client readiness, messages, and interactions.
