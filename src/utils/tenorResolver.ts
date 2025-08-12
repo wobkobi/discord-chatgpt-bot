@@ -94,7 +94,9 @@ async function searchGif(query: string): Promise<string | null> {
     `&media_filter=gif` +
     `&country=${COUNTRY}`;
 
-  logger.debug(`[tenor] Fetching V2 API: ${apiUrl}`);
+  // Redact the API key from the logged URL
+  const redactedApiUrl = apiUrl.replace(/(key=)[^&]+/, '$1[REDACTED]');
+  logger.debug(`[tenor] Fetching V2 API: ${redactedApiUrl}`);
   let resp;
   try {
     resp = await fetch(apiUrl);
