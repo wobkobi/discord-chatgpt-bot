@@ -82,21 +82,24 @@ export async function resolveTenorLinks(inputText: string): Promise<string> {
 
 /**
  * Query Tenor V2 search and return first valid GIF URL or null.
+ * Never logs the API key or full URL.
  * @param query Keywords to search.
  * @returns A valid GIF URL or null if none found.
  */
 async function searchGif(query: string): Promise<string | null> {
   const apiUrl =
-    `https://tenor.googleapis.com/v2/search?key=${TENOR_API_KEY}` +
+    `https://tenor.googleapis.com/v2/search?` +
+    `key=${TENOR_API_KEY}` +
     `&client_key=${CLIENT_KEY}` +
     `&q=${encodeURIComponent(query)}` +
     `&limit=${SEARCH_LIMIT}` +
     `&media_filter=gif` +
     `&country=${COUNTRY}`;
 
-  // Redact the API key from the logged URL
-  const redactedApiUrl = apiUrl.replace(/(key=)[^&]+/, '$1[REDACTED]');
-  logger.debug(`[tenor] Fetching V2 API: ${redactedApiUrl}`);
+  logger.debug(
+    `[tenor] Fetching Tenor V2 search (q="${query}", limit=${SEARCH_LIMIT}, country=${COUNTRY})`
+  );
+
   let resp;
   try {
     resp = await fetch(apiUrl);
@@ -127,6 +130,7 @@ async function searchGif(query: string): Promise<string | null> {
   for (const r of results) {
     const candidate = r.media_formats?.gif?.url;
     if (!candidate) continue;
+
     logger.debug(`[tenor] Checking candidate GIF HEAD: ${candidate}`);
     try {
       const head = await fetch(candidate, { method: "HEAD" });
