@@ -23,7 +23,7 @@
     "luxon": "^3.7.1",
     "mathjax-full": "^3.2.2",
     "node-fetch": "^3.3.2",
-    "openai": "^5.12.2",
+    "openai": "^6.0.1",
     "sanitize-html": "^2.17.0",
     "sharp": "^0.34.3",
     "winston": "^3.17.0",
