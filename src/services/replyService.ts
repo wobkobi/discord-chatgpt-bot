@@ -238,9 +238,9 @@ export async function generateReply(
   // Render any LaTeX formulas to PNG buffers
   const mathBuffers: Buffer[] = [];
   const formulaRegex =
-    /```(?:latex)?\s*([\s\S]+?)\s*```|\\\[(.+?)\\\]|\\\$\\\$(.+?)\\\$\\\$/gs;
+    /```(?:latex)?\s*([\s\S]+?)\s*```|\\\[(.+?)\\\]|\\\((.+?)\\\)|\$\$([\s\S]+?)\$\$/gs;
   for (const match of contentText.matchAll(formulaRegex)) {
-    const tex = (match[1] || match[2] || match[3] || "").trim();
+    const tex = (match[1] || match[2] || match[3] || match[4] || "").trim();
     try {
       const { buffer } = await renderMathToPng(tex);
       mathBuffers.push(buffer);
