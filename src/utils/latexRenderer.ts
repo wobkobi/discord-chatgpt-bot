@@ -64,7 +64,7 @@ function computeKey(latex: string): string {
  * Extracts only the <svg>…</svg> portion from the full MathJax output.
  * @param latex - The LaTeX expression to convert.
  * @returns String containing the SVG XML markup.
- * @throws Error when the MathJax output does not contain valid SVG tags.
+ * @throws {Error}Error when the MathJax output does not contain valid SVG tags.
  */
 function renderLatexToSvgString(latex: string): string {
   logger.debug(
