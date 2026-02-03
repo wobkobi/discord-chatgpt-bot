@@ -1,1 +1,0 @@
-export function getCharacterDescription(): string { return `Your Character Description`; }

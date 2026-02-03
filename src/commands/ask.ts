@@ -1,80 +1,117 @@
-import type { ChatInputCommandInteraction } from "discord.js";
-import { MessageFlags, SlashCommandBuilder } from "discord.js";
-import dotenv from "dotenv";
+/**
+ * @file src/commands/ask.ts
+ * @description Slash command to privately ask the AI assistant a question.
+ *   Handles URL and attachment extraction, persona and memory injection,
+ *   maths rendering, and ephemeral reply.
+ *
+ *   Workflow:
+ *     1. Defer reply ephemerally for async processing
+ *     2. Extract any attachments or inline media from the question
+ *     3. Build AI prompt and invoke OpenAI
+ *     4. Edit deferred reply with response text and maths images
+ *     5. Update user memory with assistant’s reply
+ */
+import type { Block, ChatMessage } from "@/types/index.js";
+import {
+  ChatInputCommandInteraction,
+  Collection,
+  Message,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "discord.js";
 import OpenAI from "openai";
-import type { ChatCompletionMessageParam } from "openai/resources/chat";
+import { generateReply } from "../services/replyService.js";
+import { updateUserMemory } from "../store/userMemory.js";
+import { getRequired } from "../utils/env.js";
+import logger from "../utils/logger.js";
+import { extractInputs } from "../utils/urlExtractor/index.js";
 
-dotenv.config();
+// Initialise OpenAI client with API key from environment
+const openai = new OpenAI({ apiKey: getRequired("OPENAI_API_KEY")! });
 
 /**
- * Slash command definition for asking a private question.
+ * Slash command definition for /ask.
+ * @param question - The user’s query to send to the assistant.
  */
 export const data = new SlashCommandBuilder()
   .setName("ask")
   .setDescription("Ask the bot a question privately")
-  .addStringOption((option) =>
-    option
+  .addStringOption((opt) =>
+    opt
       .setName("question")
-      .setDescription("The question you want to ask")
+      .setDescription("Your question for the assistant")
       .setRequired(true)
   );
 
 /**
- * Executes the /ask command by sending the provided question to OpenAI
- * and returning the response as an ephemeral message.
- * @param interaction - The interaction that triggered the command.
- * @returns Resolves when the deferred reply has been edited with the result (or an error message).
- * @throws {Error} If OpenAI returns no answer content.
+ * Execute the /ask command.
+ * @param interaction - The ChatInputCommandInteraction context.
+ * @returns Resolves once the assistant’s reply is sent or an error is handled.
  */
 export async function execute(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
-  // Defer the reply as ephemeral so only the user sees it.
+  const userId = interaction.user.id;
+  const question = interaction.options.getString("question", true).trim();
+
+  logger.debug(
+    `[ask] /ask invoked by userId=${userId}, question='${question}'`
+  );
+
+  // Defer reply so we can reply asynchronously, and mark it ephemeral
+  logger.debug("[ask] Deferring reply ephemerally");
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const question: string = interaction.options.getString("question", true);
+  // Build a fake message to extract attachments and URLs
+  const fakeMessage = {
+    content: question,
+    attachments: new Collection<string, unknown>(),
+  } as unknown as Message;
 
-  // Create a new OpenAI client instance.
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
+  logger.debug("[ask] Extracting inputs from fake message");
+  const { blocks, genericUrls } = await extractInputs(fakeMessage);
+  logger.debug(
+    `[ask] extractInputs returned ${blocks.length} blocks and ${genericUrls.length} generic URL(s)`
+  );
 
-  // Build a simple prompt using a system message and the user's question.
-  const prompt: ChatCompletionMessageParam[] = [
-    {
-      role: "system",
-      content: "You are a helpful and concise assistant.",
-      name: undefined,
-    },
-    {
-      role: "user",
-      content: question,
-      name: undefined,
-    },
-  ];
+  // Prepend the raw question as the first block
+  blocks.unshift({ type: "text", text: question } as Block);
+
+  // Prepare conversation history map for generateReply
+  const convoHistory = new Map<string, ChatMessage>();
+  const messageId = Date.now().toString();
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: prompt,
-      max_tokens: 1000,
-      top_p: 0.6,
-      frequency_penalty: 0.5,
-    });
+    logger.debug("[ask] Invoking generateReply");
+    const { text, mathBuffers } = await generateReply(
+      convoHistory,
+      messageId,
+      openai,
+      userId,
+      undefined,
+      blocks,
+      genericUrls
+    );
+    logger.debug(
+      `[ask] generateReply returned text length=${text.length}, maths buffer count=${mathBuffers.length}`
+    );
 
-    const answer: string | null | undefined =
-      response.choices[0]?.message.content;
+    // Convert maths buffers to file attachments
+    const files = mathBuffers.map((buf, idx) => ({
+      attachment: buf,
+      name: `maths-${idx}.png`,
+    }));
 
-    if (!answer) {
-      throw new Error("No answer returned from OpenAI.");
-    }
+    logger.debug("[ask] Editing deferred reply with assistant response");
+    await interaction.editReply({ content: text, files });
 
-    // Edit the deferred reply (ephemeral flag already applies).
-    await interaction.editReply({ content: answer });
-  } catch (error: unknown) {
-    console.error("Error processing /ask command:", error);
-    await interaction.editReply({
-      content: "There was an error processing your request.",
-    });
+    logger.debug("[ask] Updating user memory with assistant's reply");
+    await updateUserMemory(userId, { timestamp: Date.now(), content: text });
+
+    logger.debug("[ask] /ask command completed successfully");
+  } catch (err) {
+    logger.error("[ask] Unexpected error in /ask command:", err);
+    // Inform user of failure
+    await interaction.editReply({ content: "⚠️ Something went wrong." });
   }
 }

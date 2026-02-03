@@ -1,85 +1,91 @@
-Below is the updated README with the new repository name and the additional instructions regarding the character description file and the new .env.example:
+# Discord ChatGPT Bot
+
+A lightweight Discord bot using Discord.js and OpenAI’s ChatGPT.
+Features thread-aware memory, persona/fine-tuned modes, cooldowns, emoji replacement, LaTeX rendering, image-and-file inputs, and rotating logs.
 
 ---
 
-# ChatGPT-Discord-Bot
+## 📂 Project Layout
 
-## Overview
+```txt
+src/
+├─ commands/         Slash commands (ask, setCooldown, stop, …)
+├─ controllers/      Event handlers (messages, interactions)
+├─ services/         Core logic (prompt builder, LaTeX renderer, persona)
+├─ store/            In-memory + encrypted persistence (user & clone memory)
+├─ utils/            Helpers (cooldown, file I/O, logging, Discord formatting)
+└─ index.ts          Entry point
+```
 
-This Discord bot integrates OpenAI's GPT-4o model to provide interactive, AI-driven responses. It handles chat completions, offers concise replies, and adapts to conversation contexts dynamically.
+---
 
-## Features
+## 🚀 Quickstart
 
-- **AI Conversations:** Engage in natural, flowing dialogues powered by GPT-4o.
-- **Context Management:** Maintains conversation history to provide relevant responses.
-- **Customizable Responses:** Adjust reply length and style via settings.
-- **Character Customization:** Easily modify the bot's personality by editing the character description file.
-
-## Prerequisites
-
-- Node.js (v18 or higher recommended)
-- Discord.js library
-- OpenAI API key
-
-## Setup
-
-1. **Clone the Repository**
+1. **Clone & install**
 
    ```bash
-   git clone https://github.com/wobkobi/ChatGPT-Discord-Bot.git
-   cd ChatGPT-Discord-Bot
-   ```
-
-2. **Install Dependencies**
-
-   ```bash
+   git clone https://github.com/wobkobi/discord-chatgpt-bot.git
+   cd discord-chatgpt-bot
    npm install
    ```
 
-3. **Configure Environment**
+2. **Configure**
+   - Copy the environment example and fill in your values:
+     - On macOS/Linux:
 
-   Rename the `.env.example` file to `.env` and update it with your credentials:
+       ```bash
+       cp .env.example .env
+       ```
 
-   ```env
-   # REQUIRED:
-   OPENAI_API_KEY="your_openai_api_key"
-   BOT_TOKEN="your_discord_bot_token"
-   Client_ID="your_bot_client_id"
-   OWNER_ID="your_owner_user_id"
+     - On Windows (PowerShell or CMD):
 
-   # OPTIONAL:
-   # If you want to use a different encryption key, set it here.
-   ENCRYPTION_KEY_BASE="your_encryption_key"
-   ```
+       ```powershell
+       copy .env.example .env
+       ```
 
-4. **Customize Bot Personality**
+   - Copy the persona template:
+     - On macOS/Linux:
 
-   Rename the `src/data/characterDescription.ts.example` file to `src/data/characterDescription.ts` and edit it to reflect the personality you want your bot to have. This file defines how the bot introduces itself and behaves in conversations.
+       ```bash
+       cp src/config/persona.example.json src/config/persona.json
+       ```
 
-5. **Run the Bot**
+     - On Windows (PowerShell or CMD):
+
+       ```powershell
+       copy src\config\persona.example.json src\config\persona.json
+       ```
+
+   - Edit **`.env`** and **`src/config/persona.json`** in any text editor to set your credentials, keys, and persona text.
+
+3. **Run**
 
    ```bash
-   npm run start
+   npm run dev
    ```
-
-## Usage
-
-Invite the bot to your Discord server and interact with it by mentioning the bot or using its slash commands. For example:
-
-```
-@BotName How's the weather today?
-```
-
-The bot will reply based on its AI capabilities and the parameters set for conversation length and complexity.
-
-## Support
-
-For support, please open an issue on the [GitHub repository](https://github.com/wobkobi/ChatGPT-Discord-Bot).
-
-## Conclusion
-
-This bot provides a powerful way to add AI-driven interactions to your Discord server. Customize it to fit your needs—especially by editing the `characterDescription.ts` file—and enjoy the advanced capabilities of GPT-4o in your community.
 
 ---
 
-Feel free to adjust any sections as needed.
+## ⚙️ Usage
+
+- **/ask** – Ask the bot privately (ephemeral reply).
+- **/setbot** – (Owner) Change the bot’s username and/or avatar image.
+- **/setCooldown** – (Owner/Admin) Adjust rate limits per-guild.
+- **/setinterjection** – (Owner/Admin) Configure random interjection frequency.
+- **/stop** – (Owner) Gracefully shut down the bot.
+
+Mention the bot (or wait for a random interjection) in any channel to see persona-driven replies, math rendering (`\[ … \]` → attached images), image/file support, and more.
+
+---
+
+## 🛠️ Configuration
+
+- **Persona vs Fine-tune**: Toggle with `USE_PERSONA` and `USE_FINE_TUNED_MODEL` in `.env`.
+- **Memory**: Threads auto-summarise every 10 messages into long-term store.
+- **Logging**: Daily-rotating logs in `logs/`, level set by `LOG_LEVEL`.
+
+---
+
+## 📄 Licence
+
+[MIT Licence](LICENSE)
