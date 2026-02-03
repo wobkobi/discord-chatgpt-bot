@@ -24,8 +24,7 @@ export function initialiseEnv(path?: string): void {
  * Retrieve the value of a required environment variable, throwing if it is missing or empty.
  * @param name – The name of the environment variable to fetch.
  * @returns The non-empty string value of the environment variable.
- * @throws Will throw an Error if the variable is not set or is an empty string,
- *         or if initialiseEnv() has not been called.
+ * @throws {Error} Will throw an Error if the variable is not set or is an empty string,  or if initialiseEnv() has not been called.
  */
 export function getRequired(name: string): string {
   if (!isInitialised) {

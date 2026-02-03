@@ -26,7 +26,7 @@ export const data = new SlashCommandBuilder()
  * then cleanly destroys the Discord client and exits the process.
  * @param interaction - The ChatInputCommandInteraction context for this command.
  * @returns A promise that resolves once the shutdown sequence is initiated.
- * @throws Will throw if client destruction or process exit fails.
+ * s@throws {Error} Will throw if client destruction or process exit fails.
  */
 export async function execute(
   interaction: ChatInputCommandInteraction
