@@ -4,13 +4,14 @@
 .env.local
 package-lock.json
 yarn.lock
-/src/config/persona.json
 
 # folders
 build
 node_modules
 .eslintcache
 data/*
-logs/*
-
-/fine tuning
+generalMemory/*
+src/data/characterDescription.ts
+.venv/
+fine tuning/
+logs/
