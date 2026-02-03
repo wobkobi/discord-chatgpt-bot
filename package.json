@@ -16,8 +16,8 @@
   "dependencies": {
     "@discordjs/rest": "^2.6.0",
     "@giphy/js-fetch-api": "^5.7.0",
-    "discord-api-types": "^0.38.29",
-    "discord.js": "^14.22.1",
+    "discord-api-types": "^0.38.38",
+    "discord.js": "^14.25.1",
     "dotenv": "^17.2.3",
     "logform": "^2.7.0",
     "luxon": "^3.7.2",
@@ -56,7 +56,7 @@
     "npm": ">=7.0.0"
   },
   "overrides": {
-    "undici": "7.10.0"
+    "undici": "^7.18.2"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": "eslint --fix",
