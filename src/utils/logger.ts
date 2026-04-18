@@ -41,9 +41,9 @@ const commonFormat = combine(
   logFormat,
 );
 
-// Console transport with colourised output for readability
+// Console transport: colourised only when stdout is a real TTY
 const consoleTransport = new winston.transports.Console({
-  format: combine(colorize({ all: true }), commonFormat),
+  format: process.stdout.isTTY ? combine(colorize({ all: true }), commonFormat) : commonFormat,
 });
 
 /**
