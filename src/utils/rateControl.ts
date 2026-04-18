@@ -1,33 +1,18 @@
-// src/utils/rateControl.ts
-
 /**
  * @file src/utils/rateControl.ts
  * @description Utilities for managing per-guild message cooldowns and interjection probabilities.
- *
- *   Protects against spam by delaying bot responses and controls how often
- *   the bot may interject randomly. Emits detailed debug logs via logger.debug
- *   for traceability.
  */
 
+import { defaultCooldownConfig, defaultInterjectionRate, guildConfigs } from "@/config/index.js";
 import { GuildConfig } from "@/types/guild.js";
-import {
-  defaultCooldownConfig,
-  defaultInterjectionRate,
-  guildConfigs,
-} from "../config/index.js";
-import logger from "./logger.js";
+import logger from "@/utils/logger.js";
 
 /**
  * Retrieves the effective cooldown configuration for a given guild or DM.
  * @param guildId - The ID of the guild, or null when in a DM.
  * @returns The cooldown settings to apply (useCooldown, cooldownTime, perUserCooldown).
  */
-export function getCooldownConfig(
-  guildId: string | null
-): GuildConfig["cooldown"] {
-  logger.debug(
-    `[rateControl] getCooldownConfig invoked with guildId=${guildId}`
-  );
+export function getCooldownConfig(guildId: string | null): GuildConfig["cooldown"] {
   if (!guildId) return defaultCooldownConfig;
   return guildConfigs.get(guildId)?.cooldown ?? defaultCooldownConfig;
 }
@@ -35,17 +20,12 @@ export function getCooldownConfig(
 /**
  * Computes the context key used to track an active cooldown.
  * @param guildId - The ID of the guild, or null when in a DM.
- * @param userId  - The ID of the user invoking the command.
+ * @param userId - The ID of the user invoking the command.
  * @returns A string key (either userId or guildId) under which the cooldown is stored.
  */
-export function getCooldownContext(
-  guildId: string | null,
-  userId: string
-): string {
+export function getCooldownContext(guildId: string | null, userId: string): string {
   const { perUserCooldown } = getCooldownConfig(guildId);
-  const key = !guildId || perUserCooldown ? userId : guildId;
-  logger.debug(`[rateControl] Computed cooldown key=${key}`);
-  return key;
+  return !guildId || perUserCooldown ? userId : guildId;
 }
 
 const activeCooldowns = new Set<string>();
@@ -56,16 +36,13 @@ const activeCooldowns = new Set<string>();
  * @returns True if a cooldown is active; false otherwise.
  */
 export function isCooldownActive(key: string): boolean {
-  const active = activeCooldowns.has(key);
-  logger.debug(`[rateControl] isCooldownActive for ${key}: ${active}`);
-  return active;
+  return activeCooldowns.has(key);
 }
 
 /**
- * Begins or maintains a cooldown period for a given user or guild.
- * Will no-op if cooldowns are disabled or already active.
+ * Begins a cooldown period for a given user or guild. No-ops if cooldowns are disabled or one is already active.
  * @param guildId - The ID of the guild, or null when in a DM.
- * @param userId  - The ID of the user invoking the command.
+ * @param userId - The ID of the user invoking the command.
  */
 export function manageCooldown(guildId: string | null, userId: string): void {
   const { useCooldown, cooldownTime } = getCooldownConfig(guildId);
@@ -92,9 +69,5 @@ export function getInterjectionChance(guildId: string | null): number {
     guildId && guildConfigs.get(guildId)?.interjectionRate !== undefined
       ? guildConfigs.get(guildId)!.interjectionRate
       : defaultInterjectionRate;
-  const chance = 1 / rate;
-  logger.debug(
-    `[rateControl] Using interjection chance 1-in-${rate} → ${chance}`
-  );
-  return chance;
+  return 1 / rate;
 }

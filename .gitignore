@@ -1,16 +1,33 @@
-# files
-.vscode
+# env
 .env
 .env.local
-package-lock.json
-yarn.lock
-/src/config/persona.json
 
-# folders
-build
-node_modules
-.eslintcache
+# runtime data
 data/*
 logs/*
 
+# build output
+build/
+
+# dependencies
+node_modules/
+yarn.lock
+
+# config — user-specific files are gitignored, examples are committed
+/src/config/persona.json
+/src/config/markdownGuide.md
+
+# editor
+.vscode/*
+!.vscode/settings.json
+.eslintcache
+
+# claude code
+.claude/
+
+# os
+.DS_Store
+Thumbs.db
+
+# misc
 /fine tuning

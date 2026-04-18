@@ -1,22 +1,15 @@
 /**
  * @file src/utils/urlExtractor/extractGifs.ts
  * @description Fetches and embeds GIFs from Tenor and Giphy services into ChatGPT Blocks.
- *
- *   - extractTenorGifs: calls Tenor API to retrieve GIF URLs by message links.
- *   - extractGiphyGifs: uses GiphyFetch to fetch GIFs from Giphy links.
- *   - Avoids duplicates using seen and skip sets.
- *   - Honour allowInline flag and API key presence.
- *   - Logs detailed debug info via logger.debug and errors via logger.error.
  */
 
 import { Block } from "@/types/block.js";
+import { stripQuery } from "@/utils/discordHelpers.js";
+import logger from "@/utils/logger.js";
+import { IMAGE_EXT_RE } from "@/utils/urlExtractor/index.js";
 import { GiphyFetch } from "@giphy/js-fetch-api";
 import { Message } from "discord.js";
-import { stripQuery } from "../discordHelpers.js";
-import logger from "../logger.js";
-import { IMAGE_EXT_RE } from "./index.js";
 
-// Types for Tenor API response
 interface TenorPost {
   media_formats: { gif?: { url: string } };
 }
@@ -39,26 +32,21 @@ export async function extractTenorGifs(
   seen: Set<string>,
   skip: Set<string>,
   apiKey: string,
-  allow: boolean
+  allow: boolean,
 ): Promise<void> {
-  logger.debug("[extractGifs] extractTenorGifs invoked");
   if (!apiKey || !allow) return;
-  const links =
-    message.content.match(/https?:\/\/tenor\.com\/view\/\S+/gi) || [];
+  const links = message.content.match(/https?:\/\/tenor\.com\/view\/\S+/gi) || [];
   for (const link of links) {
     skip.add(stripQuery(link));
     const id = link.match(/-(\d+)(?:$|\?)/)?.[1];
     if (!id) continue;
     try {
-      const res = await fetch(
-        `https://tenor.googleapis.com/v2/posts?ids=${id}&key=${apiKey}`
-      );
+      const res = await fetch(`https://tenor.googleapis.com/v2/posts?ids=${id}&key=${apiKey}`);
       const json = (await res.json()) as TenorPostsResponse;
       const url = json.results[0]?.media_formats.gif?.url;
       if (url) {
         blocks.push({ type: "image_url", image_url: { url } });
         seen.add(stripQuery(url));
-        logger.debug(`[extractGifs] Tenor GIF added: ${url}`);
       }
     } catch (err) {
       logger.error(`[extractGifs] Tenor error for link ${link}`, err);
@@ -81,13 +69,11 @@ export async function extractGiphyGifs(
   seen: Set<string>,
   skip: Set<string>,
   apiKey: string,
-  allow: boolean
+  allow: boolean,
 ): Promise<void> {
-  logger.debug("[extractGifs] extractGiphyGifs invoked");
   if (!apiKey || !allow) return;
   const gf = new GiphyFetch(apiKey);
-  const links =
-    message.content.match(/https?:\/\/\S+\.giphy\.com\/gifs\/\S+/gi) || [];
+  const links = message.content.match(/https?:\/\/\S+\.giphy\.com\/gifs\/\S+/gi) || [];
   for (const link of links) {
     skip.add(stripQuery(link));
     const id = link.split("-").pop();
@@ -98,7 +84,6 @@ export async function extractGiphyGifs(
       if (IMAGE_EXT_RE.test(url)) {
         blocks.push({ type: "image_url", image_url: { url } });
         seen.add(stripQuery(url));
-        logger.debug(`[extractGifs] Giphy GIF added: ${url}`);
       }
     } catch (err) {
       logger.error(`[extractGifs] Giphy error for link ${link}`, err);

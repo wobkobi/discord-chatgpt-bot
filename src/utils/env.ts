@@ -22,14 +22,14 @@ export function initialiseEnv(path?: string): void {
 
 /**
  * Retrieve the value of a required environment variable, throwing if it is missing or empty.
- * @param name – The name of the environment variable to fetch.
+ * @param name - The name of the environment variable to fetch.
  * @returns The non-empty string value of the environment variable.
- * @throws {Error} Will throw an Error if the variable is not set or is an empty string,  or if initialiseEnv() has not been called.
+ * @throws {Error} If the variable is not set, is empty, or `initialiseEnv()` has not been called.
  */
 export function getRequired(name: string): string {
   if (!isInitialised) {
     throw new Error(
-      `Environment not initialised. Call initialiseEnv() before getRequired("${name}").`
+      `Environment not initialised. Call initialiseEnv() before getRequired("${name}").`,
     );
   }
   const value = process.env[name];
@@ -41,14 +41,14 @@ export function getRequired(name: string): string {
 
 /**
  * Retrieve the value of an optional environment variable, returning a default if unset.
- * @param name – The name of the environment variable to fetch.
- * @param defaultValue – The value to return if the variable is not set or is empty.
+ * @param name - The name of the environment variable to fetch.
+ * @param defaultValue - The value to return if the variable is not set or is empty.
  * @returns The string value of the environment variable, or the provided default.
  */
 export function getOptional(name: string, defaultValue = ""): string {
   if (!isInitialised) {
     throw new Error(
-      `Environment not initialised. Call initialiseEnv() before getOptional("${name}").`
+      `Environment not initialised. Call initialiseEnv() before getOptional("${name}").`,
     );
   }
   const value = process.env[name];
