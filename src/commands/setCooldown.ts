@@ -13,7 +13,12 @@ import {
 import { GuildConfig } from "@/types/guild.js";
 import { getRequired } from "@/utils/env.js";
 import logger from "@/utils/logger.js";
-import { ChatInputCommandInteraction, PermissionsBitField, SlashCommandBuilder } from "discord.js";
+import {
+  ChatInputCommandInteraction,
+  InteractionContextType,
+  PermissionsBitField,
+  SlashCommandBuilder,
+} from "discord.js";
 
 let OWNER_ID = "";
 try {
@@ -48,6 +53,7 @@ function formatDuration(seconds: number): string {
 export const data = new SlashCommandBuilder()
   .setName("setcooldown")
   .setDescription("Configure this server's message cooldown (owner/admin only)")
+  .setContexts(InteractionContextType.Guild)
   .addNumberOption((opt) =>
     opt
       .setName("time")

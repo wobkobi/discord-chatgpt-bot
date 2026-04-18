@@ -12,7 +12,12 @@ import {
 } from "@/config/index.js";
 import { getRequired } from "@/utils/env.js";
 import logger from "@/utils/logger.js";
-import { ChatInputCommandInteraction, PermissionsBitField, SlashCommandBuilder } from "discord.js";
+import {
+  ChatInputCommandInteraction,
+  InteractionContextType,
+  PermissionsBitField,
+  SlashCommandBuilder,
+} from "discord.js";
 
 let OWNER_ID = "";
 try {
@@ -27,6 +32,7 @@ try {
 export const data = new SlashCommandBuilder()
   .setName("setinterjection")
   .setDescription("Set how often the bot randomly interjects (1 in N chance; min N=50)")
+  .setContexts(InteractionContextType.Guild)
   .addIntegerOption((opt) =>
     opt
       .setName("rate")
