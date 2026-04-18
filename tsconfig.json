@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "rootDir": "./src",
     "outDir": "./build",
     "strict": true, // enables all strict-mode checks
@@ -22,9 +22,8 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true, // allow `import x from './config.json'`
     "sourceMap": true, // generate .map files for debugging
-    "baseUrl": ".", // for non-relative imports
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
     "typeRoots": ["./node_modules/@types", "./src/types"]
   },
