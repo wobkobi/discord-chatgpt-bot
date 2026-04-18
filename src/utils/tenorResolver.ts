@@ -1,11 +1,15 @@
+/**
+ * @file src/utils/tenorResolver.ts
+ * @description Resolves tenor.com/view/... links to direct GIF URLs via the Tenor V2 API.
+ */
+
 import { TenorResult, TenorSearchResponse } from "@/types/tenor.js";
+import { getOptional } from "@/utils/env.js";
+import logger from "@/utils/logger.js";
 import fetch from "node-fetch";
-import { getOptional } from "../utils/env.js";
-import logger from "../utils/logger.js";
 
 const TENOR_API_KEY = getOptional("TENOR_API_KEY");
 const CLIENT_KEY = getOptional("TENOR_CLIENT_KEY") || "discord-bot";
-// Derive country code from system locale, fallback to 'US'
 const COUNTRY = (() => {
   const locale = Intl.DateTimeFormat().resolvedOptions().locale;
   const parts = locale.split("-");
@@ -14,11 +18,10 @@ const COUNTRY = (() => {
 const SEARCH_LIMIT = 3;
 
 /**
- * Replace each tenor.com/view/... link in the text with the first valid GIF
- * URL returned by the Tenor V2 search API. Direct GIF URLs (media.tenor.com/*.gif)
- * are detected and left intact, with a debug log entry. Detailed logging throughout.
- * @param inputText The text potentially containing tenor.com/view/... links.
- * @returns The text with valid Tenor GIF links replaced.
+ * Replace each tenor.com/view/... link in the text with the first valid GIF URL from the Tenor API.
+ * Direct GIF URLs (media.tenor.com) are left intact.
+ * @param inputText - The text potentially containing tenor.com/view/... links.
+ * @returns The text with resolved Tenor links replaced by direct GIF URLs.
  */
 export async function resolveTenorLinks(inputText: string): Promise<string> {
   if (!TENOR_API_KEY) {
@@ -26,44 +29,27 @@ export async function resolveTenorLinks(inputText: string): Promise<string> {
     return inputText;
   }
 
-  logger.debug("[tenor] Starting link resolution");
-
-  // Detect direct GIF URLs (media.tenor.com or c.tenor.com) and log them at info level
   const tenorRe =
     /https?:\/\/(?:[\w-]+\.)?tenor\.com\/(?:(?:view\/([\w-]+)-\d+)|(?:[\w/.-]+\.gif))/g;
   const matches = Array.from(inputText.matchAll(tenorRe), (m) => ({
     full: m[0],
     slug: m[1],
   }));
-  logger.debug(`[tenor] Found ${matches.length} tenor.com links to resolve`);
 
   const replacements = new Map<string, string>();
 
   for (const { full, slug } of matches) {
-    logger.debug(`[tenor] Processing link: ${full}`);
-    if (replacements.has(full)) {
-      logger.debug(`[tenor] Already processed: ${full}`);
-      continue;
-    }
+    if (replacements.has(full)) continue;
 
-    const query = slug
-      .replace(/-gif$/i, "")
-      .replace(/-\d+$/, "")
-      .split("-")
-      .join(" ");
-    logger.debug(`[tenor] Search query: "${query}"`);
+    const query = slug.replace(/-gif$/i, "").replace(/-\d+$/, "").split("-").join(" ");
 
     let gifUrl = await searchGif(query);
     if (!gifUrl) {
       const simplified = query.split(" ").slice(0, 2).join(" ");
-      if (simplified !== query) {
-        logger.debug(`[tenor] Retrying with simplified query: "${simplified}"`);
-        gifUrl = await searchGif(simplified);
-      }
+      if (simplified !== query) gifUrl = await searchGif(simplified);
     }
 
     if (gifUrl) {
-      logger.debug(`[tenor] Will replace "${full}" → ${gifUrl}`);
       replacements.set(full, gifUrl);
     } else {
       logger.warn(`[tenor] No valid GIF found for link: ${full}`);
@@ -73,17 +59,36 @@ export async function resolveTenorLinks(inputText: string): Promise<string> {
   let out = inputText;
   for (const [from, to] of replacements) {
     out = out.replaceAll(from, to);
-    logger.debug(`[tenor] Replaced link: ${from}`);
   }
-
-  logger.debug("[tenor] Finished link resolution");
   return out;
 }
 
 /**
- * Query Tenor V2 search and return first valid GIF URL or null.
- * Never logs the API key or full URL.
- * @param query Keywords to search.
+ * Scans text for `[GIF: keywords]` placeholders the AI may include in its response,
+ * searches Tenor for each, and replaces the placeholder with a direct GIF URL.
+ * Placeholders with no result are removed silently.
+ * @param text - The AI-generated response text to process.
+ * @returns The text with all `[GIF: ...]` placeholders resolved or removed.
+ */
+export async function resolveGifPlaceholders(text: string): Promise<string> {
+  if (!TENOR_API_KEY) return text;
+
+  const re = /\[GIF:\s*([^\]]+)\]/gi;
+  const matches = Array.from(text.matchAll(re));
+  if (!matches.length) return text;
+
+  let result = text;
+  for (const match of matches) {
+    const keywords = match[1].trim();
+    const url = await searchGif(keywords);
+    result = result.replace(match[0], url ?? "");
+  }
+  return result.replace(/ {2,}/g, " ").trim();
+}
+
+/**
+ * Query Tenor V2 search and return the first HEAD-validated GIF URL, or null if none found.
+ * @param query - Keywords to search for.
  * @returns A valid GIF URL or null if none found.
  */
 async function searchGif(query: string): Promise<string | null> {
@@ -95,10 +100,6 @@ async function searchGif(query: string): Promise<string | null> {
     `&limit=${SEARCH_LIMIT}` +
     `&media_filter=gif` +
     `&country=${COUNTRY}`;
-
-  logger.debug(
-    `[tenor] Fetching Tenor V2 search (q="${query}", limit=${SEARCH_LIMIT}, country=${COUNTRY})`
-  );
 
   let resp;
   try {
@@ -121,7 +122,6 @@ async function searchGif(query: string): Promise<string | null> {
   try {
     const json = (await resp.json()) as TenorSearchResponse;
     results = json.results;
-    logger.debug(`[tenor] Retrieved ${results.length} result(s)`);
   } catch (err: unknown) {
     logger.error(`[tenor] JSON parse error for "${query}"`, err);
     return null;
@@ -130,19 +130,11 @@ async function searchGif(query: string): Promise<string | null> {
   for (const r of results) {
     const candidate = r.media_formats?.gif?.url;
     if (!candidate) continue;
-
-    logger.debug(`[tenor] Checking candidate GIF HEAD: ${candidate}`);
     try {
       const head = await fetch(candidate, { method: "HEAD" });
       const ct = head.headers.get("content-type") || "";
-      if (head.ok && ct.startsWith("image")) {
-        logger.debug(`[tenor] Valid GIF found: ${candidate}`);
-        return candidate;
-      } else {
-        logger.warn(
-          `[tenor] Invalid HEAD for ${candidate} status=${head.status} ct=${ct}`
-        );
-      }
+      if (head.ok && ct.startsWith("image")) return candidate;
+      logger.warn(`[tenor] Invalid HEAD for ${candidate} status=${head.status} ct=${ct}`);
     } catch (err: unknown) {
       logger.error(`[tenor] HEAD check error for ${candidate}`, err);
     }

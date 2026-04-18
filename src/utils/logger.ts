@@ -1,19 +1,17 @@
 /**
  * @file src/utils/logger.ts
  * @description Configures and exports a Winston logger with console and file transports,
- *   including daily rotation for combined logs and error-specific logs, and provides a static "latest.log" symlink.
- *
+ *   including daily rotation for combined logs and error-specific logs, and a static "latest.log" symlink.
  *   Uses timestamped formatting, error stack inclusion, and emits an audible bell on error entries.
- *   Emits debug logs to confirm initialization and transport setup.
  */
 
+import { LOGS_DIR, LOGS_ERROR_DIR } from "@/config/paths.js";
+import { getOptional, initialiseEnv } from "@/utils/env.js";
 import fs from "fs";
 import { TransformableInfo } from "logform";
 import path from "path";
 import winston from "winston";
 import DailyRotateFile from "winston-daily-rotate-file";
-import { LOGS_DIR, LOGS_ERROR_DIR } from "../config/paths.js";
-import { getOptional, initialiseEnv } from "./env.js";
 
 initialiseEnv();
 const { combine, timestamp, printf, colorize, errors } = winston.format;
@@ -32,20 +30,18 @@ if (!fs.existsSync(LOGS_ERROR_DIR)) {
  */
 const logFormat = printf((info: TransformableInfo) => {
   const bell = info.level === "error" ? "\u0007" : "";
-  const base = `[${info.timestamp}] [${info.level.toUpperCase()}]: ${
-    info.stack || info.message
-  }`;
+  const base = `[${info.timestamp}] [${info.level.toUpperCase()}]: ${info.stack || info.message}`;
   return bell + base;
 });
 
-// Shared format pipeline: attaches timestamps, includes error stacks, and applies custom printf.
+// Shared format pipeline: attaches timestamps, includes error stacks, and applies custom printf
 const commonFormat = combine(
   timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
   errors({ stack: true }),
-  logFormat
+  logFormat,
 );
 
-// Console transport with colourised output for readability.
+// Console transport with colourised output for readability
 const consoleTransport = new winston.transports.Console({
   format: combine(colorize({ all: true }), commonFormat),
 });

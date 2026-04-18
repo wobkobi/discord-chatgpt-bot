@@ -1,42 +1,34 @@
 /**
- * @file src/commands/setcooldown.ts
- * @description Slash command to configure this server’s message cooldown settings.
+ * @file src/commands/setCooldown.ts
+ * @description Slash command to configure this server's message cooldown settings.
  *   Restricted to the bot owner or server administrators.
- *
- *   Validates permissions, updates the guild’s combined config object,
- *   and persists via saveGuildConfigs().
  */
-import { GuildConfig } from "@/types/guild.js";
-import {
-  ChatInputCommandInteraction,
-  PermissionsBitField,
-  SlashCommandBuilder,
-} from "discord.js";
+
 import {
   defaultCooldownConfig,
   defaultInterjectionRate,
   guildConfigs,
   saveGuildConfigs,
-} from "../config/index.js";
-import { getRequired } from "../utils/env.js";
-import logger from "../utils/logger.js";
+} from "@/config/index.js";
+import { GuildConfig } from "@/types/guild.js";
+import { getRequired } from "@/utils/env.js";
+import logger from "@/utils/logger.js";
+import { ChatInputCommandInteraction, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 
-// Safely load OWNER_ID
 let OWNER_ID = "";
 try {
   OWNER_ID = getRequired("OWNER_ID");
 } catch (err) {
   logger.warn(
     "[setcooldown] OWNER_ID not configured; permission checks will treat no one as owner.",
-    err
+    err,
   );
 }
 
 /**
- * Helper to turn seconds into a human-friendly string.
- * @param seconds – The duration in seconds to format.
- * @returns A string formatted as hours, minutes, or seconds;
- *          e.g. `60 → "1 minute"`, `120 → "2 minutes"`, `75 → "75 seconds"`.
+ * Format a duration in seconds as a human-friendly string.
+ * @param seconds - The duration in seconds to format.
+ * @returns A string such as `"1 minute"`, `"2 hours"`, or `"75 seconds"`.
  */
 function formatDuration(seconds: number): string {
   if (seconds % 3600 === 0) {
@@ -52,23 +44,21 @@ function formatDuration(seconds: number): string {
 
 /**
  * Slash command registration data for /setcooldown.
- * @param time - Cooldown duration in seconds (0 disables cooldown).
- * @param peruser - Whether to apply the cooldown per user rather than globally.
  */
 export const data = new SlashCommandBuilder()
   .setName("setcooldown")
-  .setDescription("Configure this server’s message cooldown (owner/admin only)")
+  .setDescription("Configure this server's message cooldown (owner/admin only)")
   .addNumberOption((opt) =>
     opt
       .setName("time")
       .setDescription("Cooldown duration in seconds (0 to disable)")
-      .setRequired(true)
+      .setRequired(true),
   )
   .addBooleanOption((opt) =>
     opt
       .setName("peruser")
       .setDescription("Apply cooldown per user instead of globally")
-      .setRequired(false)
+      .setRequired(false),
   );
 
 /**
@@ -76,36 +66,27 @@ export const data = new SlashCommandBuilder()
  * @param interaction - The ChatInputCommandInteraction context.
  * @returns Promise that resolves when the reply is sent.
  */
-export async function execute(
-  interaction: ChatInputCommandInteraction
-): Promise<void> {
+export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const userId = interaction.user.id;
-  logger.debug(`[setcooldown] Invoked by userId=${userId}`);
 
-  // Permission check
   if (!OWNER_ID) {
     await interaction.reply({
-      content:
-        "⚠️ Bot owner is not configured. Cooldown cannot be changed right now.",
+      content: "⚠️ Bot owner is not configured. Cooldown cannot be changed right now.",
       ephemeral: true,
     });
     return;
   }
-  const isOwner = OWNER_ID === userId;
 
-  const isAdmin = interaction.memberPermissions?.has(
-    PermissionsBitField.Flags.Administrator
-  );
+  const isOwner = OWNER_ID === userId;
+  const isAdmin = interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator);
   if (!isOwner && !isAdmin) {
     await interaction.reply({
-      content:
-        "🚫 You must be a server administrator or the bot owner to configure cooldown.",
+      content: "🚫 You must be a server administrator or the bot owner to configure cooldown.",
       ephemeral: true,
     });
     return;
   }
 
-  // Must be in a guild
   const guildId = interaction.guild?.id;
   if (!guildId) {
     await interaction.reply({
@@ -115,7 +96,6 @@ export async function execute(
     return;
   }
 
-  // Read options
   const time = interaction.options.getNumber("time", true);
   const perUser = interaction.options.getBoolean("peruser") ?? false;
 
@@ -127,41 +107,26 @@ export async function execute(
     return;
   }
 
-  // Fetch existing config or defaults
   const existing: GuildConfig = guildConfigs.get(guildId) ?? {
     cooldown: defaultCooldownConfig,
     interjectionRate: defaultInterjectionRate,
   };
 
-  // Build updated config
   const newConfig: GuildConfig = {
-    cooldown: {
-      useCooldown: time > 0,
-      cooldownTime: time,
-      perUserCooldown: perUser,
-    },
+    cooldown: { useCooldown: time > 0, cooldownTime: time, perUserCooldown: perUser },
     interjectionRate: existing.interjectionRate,
   };
 
-  // Persist
   guildConfigs.set(guildId, newConfig);
   await saveGuildConfigs();
   logger.info(
-    `[setcooldown] Guild ${guildId} cooldown updated: ${JSON.stringify(
-      newConfig.cooldown
-    )}`
+    `[setcooldown] Guild ${guildId} cooldown updated: ${JSON.stringify(newConfig.cooldown)}`,
   );
 
-  // Confirmation message
   const durationText = time === 0 ? "" : formatDuration(time);
   const scopeText = time === 0 ? "" : perUser ? "per user" : "globally";
   const reply =
-    time === 0
-      ? `✅ Cooldown disabled.`
-      : `✅ Cooldown set to **${durationText}** ${scopeText}.`;
+    time === 0 ? `✅ Cooldown disabled.` : `✅ Cooldown set to **${durationText}** ${scopeText}.`;
 
-  await interaction.reply({
-    content: reply,
-    ephemeral: true,
-  });
+  await interaction.reply({ content: reply, ephemeral: true });
 }
