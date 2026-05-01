@@ -18,7 +18,7 @@
     "@discordjs/rest": "^2.6.1",
     "@giphy/js-fetch-api": "^5.7.0",
     "discord-api-types": "^0.38.47",
-    "discord.js": "^14.26.3",
+    "discord.js": "^14.26.4",
     "dotenv": "^17.4.2",
     "logform": "^2.7.0",
     "luxon": "^3.7.2",
