@@ -9,6 +9,12 @@ import logger from "@/utils/logger.js";
 import { Message } from "discord.js";
 import fetch from "node-fetch";
 
+/** Largest PDF attachment the bot will download and embed as base64. */
+const MAX_PDF_BYTES = 8 * 1024 * 1024;
+
+/** Largest text attachment the bot will download (truncated further after reading). */
+const MAX_TEXT_BYTES = 2 * 1024 * 1024;
+
 /**
  * Captures Discord sticker images as image_url blocks.
  * @param message - The incoming Discord.js Message.
@@ -44,6 +50,12 @@ export async function extractAttachments(
       blocks.push({ type: "image_url", image_url: { url } });
       seen.add(key);
     } else if (ct === "application/pdf") {
+      // Discord reports attachment size up front; skip before downloading, not after
+      if (att.size > MAX_PDF_BYTES) {
+        logger.warn(`[extractDiscord] Skipping oversized PDF ${name} (${att.size} bytes)`);
+        seen.add(key);
+        continue;
+      }
       try {
         const buf = await (await fetch(url)).arrayBuffer();
         const b64 = Buffer.from(buf).toString("base64");
@@ -56,6 +68,13 @@ export async function extractAttachments(
         logger.warn(`[extractDiscord] Failed to embed PDF ${url}:`, err);
       }
     } else if (ct.startsWith("text/")) {
+      if (att.size > MAX_TEXT_BYTES) {
+        logger.warn(
+          `[extractDiscord] Skipping oversized text attachment ${name} (${att.size} bytes)`,
+        );
+        seen.add(key);
+        continue;
+      }
       try {
         let txt = await (await fetch(url)).text();
         if (txt.length > 8000) txt = txt.slice(0, 8000) + "... [truncated]";

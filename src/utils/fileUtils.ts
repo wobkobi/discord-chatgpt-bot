@@ -156,19 +156,18 @@ export const loadCloneMemory = (uid: string): Promise<GeneralMemoryEntry[]> =>
   loadData(CLONE_MEM_DIR, uid, []);
 
 /**
- * Save all conversation threads for contexts to disk.
- * @param histories - Map of context keys to conversation contexts.
- * @param idMaps - Map of context keys to message ID mappings.
+ * Save all conversation threads for contexts to disk. Each context's inner map is
+ * already keyed by thread ID; {@link loadConversations} rebuilds the message-ID
+ * mappings from the messages themselves.
+ * @param histories - Map of context keys to conversation contexts keyed by thread ID.
  */
 export async function saveConversations(
   histories: Map<string, Map<string, ConversationContext>>,
-  idMaps: Map<string, Map<string, string>>,
 ): Promise<void> {
   for (const [ctx, convs] of histories.entries()) {
     const out: Record<string, ChatMessage[]> = {};
-    const map = idMaps.get(ctx)!;
-    for (const [msgId, thread] of convs.entries()) {
-      out[map.get(msgId)!] = Array.from(thread.messages.values());
+    for (const [threadId, thread] of convs.entries()) {
+      out[threadId] = Array.from(thread.messages.values());
     }
     await saveData(CONV_DIR, ctx, out);
   }

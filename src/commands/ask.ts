@@ -8,6 +8,12 @@ import { updateUserMemory } from "@/store/userMemory.js";
 import type { Block, ChatMessage } from "@/types/index.js";
 import { getRequired } from "@/utils/env.js";
 import logger from "@/utils/logger.js";
+import {
+  getCooldownConfig,
+  getCooldownContext,
+  isCooldownActive,
+  manageCooldown,
+} from "@/utils/rateControl.js";
 import { extractInputs } from "@/utils/urlExtractor/index.js";
 import {
   ChatInputCommandInteraction,
@@ -39,20 +45,34 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const userId = interaction.user.id;
   const question = interaction.options.getString("question", true).trim();
 
+  // Same cooldown rules as the message path; slash commands are otherwise uncapped
+  const guildId = interaction.guildId ?? null;
+  const { useCooldown, cooldownTime } = getCooldownConfig(guildId);
+  if (useCooldown && isCooldownActive(getCooldownContext(guildId, userId))) {
+    await interaction.reply({
+      content: `⏳ Cooldown: ${cooldownTime.toFixed(2)}s`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (useCooldown) manageCooldown(guildId, userId);
+
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
+  // Minimal Message stand-in for extractInputs; every collection it reads must exist
   const fakeMessage = {
     content: question,
     attachments: new Collection<string, unknown>(),
+    stickers: new Collection<string, unknown>(),
   } as unknown as Message;
-
-  const { blocks, genericUrls } = await extractInputs(fakeMessage);
-  blocks.unshift({ type: "text", text: question } as Block);
 
   const convoHistory = new Map<string, ChatMessage>();
   const messageId = Date.now().toString();
 
   try {
+    const { blocks, genericUrls } = await extractInputs(fakeMessage);
+    blocks.unshift({ type: "text", text: question } as Block);
+
     const { text, mathBuffers } = await generateReply(
       convoHistory,
       messageId,

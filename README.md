@@ -1,7 +1,8 @@
 # Discord ChatGPT Bot
 
-A lightweight Discord bot using Discord.js and OpenAI’s ChatGPT.
-Features thread-aware memory, persona/fine-tuned modes, cooldowns, emoji replacement, LaTeX rendering, image-and-file inputs, and rotating logs.
+A lightweight Discord bot using Discord.js and OpenAI’s ChatGPT. Features thread-aware memory,
+persona/fine-tuned modes, cooldowns, emoji replacement, LaTeX rendering, image-and-file inputs, and
+rotating logs.
 
 ---
 
@@ -56,7 +57,8 @@ src/
        copy src\config\persona.example.json src\config\persona.json
        ```
 
-   - Edit **`.env`** and **`src/config/persona.json`** in any text editor to set your credentials, keys, and persona text.
+   - Edit **`.env`** and **`src/config/persona.json`** in any text editor to set your credentials,
+     keys, and persona text.
 
 3. **Run**
 
@@ -74,7 +76,8 @@ src/
 - **/setinterjection** – (Owner/Admin) Configure random interjection frequency.
 - **/stop** – (Owner) Gracefully shut down the bot.
 
-Mention the bot (or wait for a random interjection) in any channel to see persona-driven replies, math rendering (`\[ … \]` → attached images), image/file support, and more.
+Mention the bot (or wait for a random interjection) in any channel to see persona-driven replies,
+math rendering (`\[ … \]` → attached images), image/file support, and more.
 
 ---
 
