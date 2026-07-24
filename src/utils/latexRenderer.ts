@@ -16,6 +16,13 @@ import { SVG } from "mathjax-full/js/output/svg.js";
 import path from "path";
 import sharp from "sharp";
 
+/**
+ * Longest LaTeX input accepted for rendering. Formulas come from AI output, which a
+ * prompt-injected message could inflate; MathJax conversion plus 300-dpi rasterisation
+ * of a huge formula would stall the whole process.
+ */
+const MAX_LATEX_LENGTH = 2000;
+
 const adaptor = liteAdaptor();
 RegisterHTMLHandler(adaptor);
 const tex = new TeX();
@@ -76,6 +83,9 @@ async function renderMathToSvg(latexInput: string): Promise<string> {
 export async function renderMathToPng(
   latexInput: string,
 ): Promise<{ buffer: Buffer; filePath: string }> {
+  if (latexInput.length > MAX_LATEX_LENGTH) {
+    throw new Error(`LaTeX input too long (${latexInput.length} > ${MAX_LATEX_LENGTH} chars)`);
+  }
   const svgPath = await renderMathToSvg(latexInput);
   const key = path.basename(svgPath, ".svg");
   const outPath = path.join(OUTPUT_DIR, `math-${key}.png`);

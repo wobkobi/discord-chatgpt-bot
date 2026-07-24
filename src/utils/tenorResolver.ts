@@ -18,6 +18,16 @@ const COUNTRY = (() => {
 const SEARCH_LIMIT = 3;
 
 /**
+ * Strip the Tenor API key from text destined for logs. Fetch errors embed the full
+ * request URL - key included - in their message, so raw errors must never be logged.
+ * @param text - Error message or other text that may contain the key.
+ * @returns The text with any key occurrences replaced.
+ */
+function redactKey(text: string): string {
+  return TENOR_API_KEY ? text.split(TENOR_API_KEY).join("[redacted]") : text;
+}
+
+/**
  * Replace each tenor.com/view/... link in the text with the first valid GIF URL from the Tenor API.
  * Direct GIF URLs (media.tenor.com) are left intact.
  * @param inputText - The text potentially containing tenor.com/view/... links.
@@ -40,6 +50,9 @@ export async function resolveTenorLinks(inputText: string): Promise<string> {
 
   for (const { full, slug } of matches) {
     if (replacements.has(full)) continue;
+    // Direct media .gif links match the regex without a slug group; they are already
+    // usable URLs and need no resolution
+    if (!slug) continue;
 
     const query = slug.replace(/-gif$/i, "").replace(/-\d+$/, "").split("-").join(" ");
 
@@ -105,7 +118,9 @@ async function searchGif(query: string): Promise<string | null> {
   try {
     resp = await fetch(apiUrl);
   } catch (err: unknown) {
-    logger.error(`[tenor] Network error for "${query}"`, err);
+    logger.error(
+      `[tenor] Network error for "${query}": ${redactKey(err instanceof Error ? err.message : String(err))}`,
+    );
     return null;
   }
 
@@ -123,7 +138,9 @@ async function searchGif(query: string): Promise<string | null> {
     const json = (await resp.json()) as TenorSearchResponse;
     results = json.results;
   } catch (err: unknown) {
-    logger.error(`[tenor] JSON parse error for "${query}"`, err);
+    logger.error(
+      `[tenor] JSON parse error for "${query}": ${redactKey(err instanceof Error ? err.message : String(err))}`,
+    );
     return null;
   }
 

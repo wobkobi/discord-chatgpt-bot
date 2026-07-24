@@ -31,8 +31,31 @@ import OpenAI from "openai";
 /** Maximum number of messages a thread can hold before summarisation to memory. */
 const MESSAGE_LIMIT = 10;
 
+/** Maximum threads kept in memory per context before the oldest are dropped. */
+const THREAD_LIMIT = 100;
+
 const histories = new Map<string, Map<string, ConversationContext>>();
 const idMaps = new Map<string, Map<string, string>>();
+
+/**
+ * Drop the oldest threads (Map insertion order) and their message-ID mappings once a
+ * context exceeds {@link THREAD_LIMIT}, keeping long-running instances memory-bounded.
+ * @param convMap - Thread map for one context.
+ * @param convIds - Message-ID to thread-ID map for the same context.
+ */
+function pruneThreads(
+  convMap: Map<string, ConversationContext>,
+  convIds: Map<string, string>,
+): void {
+  while (convMap.size > THREAD_LIMIT) {
+    const oldest = convMap.keys().next().value;
+    if (!oldest) return;
+    convMap.delete(oldest);
+    for (const [msgId, threadId] of convIds) {
+      if (threadId === oldest) convIds.delete(msgId);
+    }
+  }
+}
 
 const LOCALE = Intl.DateTimeFormat().resolvedOptions().locale;
 
@@ -44,7 +67,7 @@ function scheduleSave(): void {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = undefined;
-    saveConversations(histories, idMaps).catch((err) =>
+    saveConversations(histories).catch((err) =>
       logger.error("[messageController] Failed to save conversations:", err),
     );
   }, 5000);
@@ -108,7 +131,10 @@ async function doReply(
   convIds.set(message.id, threadId);
 
   const convMap = histories.get(contextKey)!;
-  if (!convMap.has(threadId)) convMap.set(threadId, { messages: new Map() });
+  if (!convMap.has(threadId)) {
+    convMap.set(threadId, { messages: new Map() });
+    pruneThreads(convMap, convIds);
+  }
   const conversation = convMap.get(threadId)!;
 
   const userChat = createChatMessage(message, "user", client.user!.username);
@@ -145,7 +171,13 @@ async function doReply(
   if (conversation.messages.size >= MESSAGE_LIMIT) {
     const summary = summariseConversation(conversation);
     await updateUserMemory(userId, { timestamp: Date.now(), content: `🔖 ${summary}` });
+    // Reset the thread but keep the message being answered - clearing it too would
+    // hand generateReply an empty prompt. Old ID mappings die with the history.
     conversation.messages.clear();
+    conversation.messages.set(message.id, userChat);
+    for (const [msgId, tid] of convIds) {
+      if (tid === threadId && msgId !== message.id) convIds.delete(msgId);
+    }
   }
 
   if (interject) {

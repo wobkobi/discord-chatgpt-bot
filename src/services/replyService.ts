@@ -146,10 +146,10 @@ export async function generateReply(
     `📝 Prompt → model=${modelName}, blocks=${currentContent.length}, thread depth=${convoHistory.size}`,
   );
 
-  let contentText: string;
-  try {
-    const res = await openai.chat.completions.create({
-      model: modelName,
+  // Single completion call, parameterised by model so the fallback can retry explicitly
+  const requestCompletion = (model: string): Promise<OpenAI.Chat.Completions.ChatCompletion> =>
+    openai.chat.completions.create({
+      model,
       messages: messages as unknown as ChatCompletionMessageParam[],
       temperature: 0.9,
       top_p: 0.9,
@@ -159,6 +159,24 @@ export async function generateReply(
       user: userId,
     });
 
+  let contentText: string;
+  try {
+    let res;
+    try {
+      res = await requestCompletion(modelName);
+    } catch (err: unknown) {
+      // Retry once on the base model - recursing into generateReply re-selects the
+      // same missing fine-tuned model from env and loops forever
+      if (useFT && err instanceof APIError && err.code === "model_not_found") {
+        logger.error(
+          `[replyService] Fine-tuned model not found: ${modelName} - falling back to gpt-4o`,
+        );
+        res = await requestCompletion("gpt-4o");
+      } else {
+        throw err;
+      }
+    }
+
     contentText = res.choices[0]?.message.content?.trim() || "";
     if (!contentText) throw new Error("Empty AI response");
 
@@ -166,20 +184,6 @@ export async function generateReply(
       `📝 Prompt tokens: ${res.usage?.prompt_tokens ?? "?"}, completion tokens: ${res.usage?.completion_tokens ?? "?"}`,
     );
   } catch (err: unknown) {
-    if (useFT && err instanceof APIError && err.code === "model_not_found") {
-      logger.error(
-        `[replyService] Fine-tuned model not found: ${modelName} — falling back to gpt-4o`,
-      );
-      return generateReply(
-        convoHistory,
-        currentId,
-        openai,
-        userId,
-        channelHistory,
-        blocks,
-        genericUrls,
-      );
-    }
     logger.error("[replyService] OpenAI error:", err);
     if (err instanceof APIError && err.code === "insufficient_quota") {
       return { text: "⚠️ The assistant is out of quota.", mathBuffers: [] };

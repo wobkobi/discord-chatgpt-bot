@@ -49,7 +49,11 @@ export async function extractTenorGifs(
         seen.add(stripQuery(url));
       }
     } catch (err) {
-      logger.error(`[extractGifs] Tenor error for link ${link}`, err);
+      // Fetch errors embed the request URL - and with it the API key - in their message
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(
+        `[extractGifs] Tenor error for link ${link}: ${msg.split(apiKey).join("[redacted]")}`,
+      );
     }
   }
 }
