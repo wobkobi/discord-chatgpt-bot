@@ -31,16 +31,17 @@ Code Blocks
 Block Quotes
 
 - Single-line: > quote
-- Multi-line: >>>
-  quote line 1
-  quote line 2
+- Multi-line: >>> quote line 1 quote line 2
 
 Math Rendering
 
 - LaTeX expressions enclosed in \[ ... \] will be rendered as image attachments below your message.
-- Do not leave blank lines where formulas were; collapse text so the next sentence follows immediately.
-- Do not include LaTeX markers in your text — write normal prose and let attachments carry the equations.
+- Do not leave blank lines where formulas were; collapse text so the next sentence follows
+  immediately.
+- Do not include LaTeX markers in your text — write normal prose and let attachments carry the
+  equations.
 
 Attachment Placement
 
-- Math images appear after your paragraph. Do not say "as shown above"; instead say e.g. "See attached formula."
+- Math images appear after your paragraph. Do not say "as shown above"; instead say e.g. "See
+  attached formula."
