@@ -1,15 +1,15 @@
 {
   "name": "chatgpt",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc && tsc-alias",
+    "build": "node -e \"fs.rmSync('build',{recursive:true,force:true,maxRetries:10,retryDelay:200});fs.rmSync('tsconfig.tsbuildinfo',{force:true})\" && tsc && tsc-alias",
     "dev": "tsx watch src/index.ts",
     "format": "prettier --write \"**/*.{js,mjs,cjs,ts,md,json,yml,yaml}\"",
     "lint": "eslint \"src/**/*.{js,ts}\" --fix",
     "prepare": "simple-git-hooks",
-    "start": "tsc && tsc-alias && node build/index.js",
+    "start": "npm run build && node build/index.js",
     "typecheck": "tsc --noEmit"
   },
   "simple-git-hooks": {
