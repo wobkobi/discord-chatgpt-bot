@@ -69,6 +69,6 @@
   },
   "allowScripts": {
     "esbuild": false,
-    "simple-git-hooks": false
+    "simple-git-hooks": true
   }
 }
