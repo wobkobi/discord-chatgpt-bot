@@ -30,7 +30,7 @@
   "dependencies": {
     "@discordjs/rest": "^2.6.3",
     "@giphy/js-fetch-api": "^5.8.0",
-    "discord-api-types": "^0.38.50",
+    "discord-api-types": "^0.38.52",
     "discord.js": "^14.27.0",
     "dotenv": "^17.4.2",
     "logform": "^2.7.0",
