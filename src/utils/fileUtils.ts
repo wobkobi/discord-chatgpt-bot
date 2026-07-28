@@ -3,11 +3,11 @@
  * @description Handles encryption, directory management, and generic data persistence for memory and conversations.
  */
 
-import { CLONE_MEM_DIR, CONV_DIR, USER_MEM_DIR } from "@/config/paths.js";
-import { ChatMessage, ConversationContext } from "@/types/chat.js";
-import { GeneralMemoryEntry } from "@/types/memory.js";
-import { getRequired } from "@/utils/env.js";
-import logger from "@/utils/logger.js";
+import { CLONE_MEM_DIR, CONV_DIR, USER_MEM_DIR } from "@/config/paths";
+import { ChatMessage, ConversationContext } from "@/types/chat";
+import { GeneralMemoryEntry } from "@/types/memory";
+import { getRequired } from "@/utils/env";
+import logger from "@/utils/logger";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import { existsSync } from "fs";
 import fs from "fs/promises";

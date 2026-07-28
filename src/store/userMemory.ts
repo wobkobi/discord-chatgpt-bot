@@ -3,10 +3,10 @@
  * @description Manages long-term memory entries for regular users, stored in-memory and persisted to disk.
  */
 
-import { GeneralMemoryEntry } from "@/types/memory.js";
-import { loadUserMemory, saveUserMemory } from "@/utils/fileUtils.js";
-import logger from "@/utils/logger.js";
-import { trimMemory } from "@/utils/trimMemory.js";
+import { GeneralMemoryEntry } from "@/types/memory";
+import { loadUserMemory, saveUserMemory } from "@/utils/fileUtils";
+import logger from "@/utils/logger";
+import { trimMemory } from "@/utils/trimMemory";
 
 /** In-memory cache of user memory entries, keyed by Discord user ID. */
 export const userMemory = new Map<string, GeneralMemoryEntry[]>();

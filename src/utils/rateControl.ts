@@ -3,9 +3,9 @@
  * @description Utilities for managing per-guild message cooldowns and interjection probabilities.
  */
 
-import { defaultCooldownConfig, defaultInterjectionRate, guildConfigs } from "@/config/index.js";
-import { GuildConfig } from "@/types/guild.js";
-import logger from "@/utils/logger.js";
+import { defaultCooldownConfig, defaultInterjectionRate, guildConfigs } from "@/config/index";
+import { GuildConfig } from "@/types/guild";
+import logger from "@/utils/logger";
 
 /**
  * Retrieves the effective cooldown configuration for a given guild or DM.

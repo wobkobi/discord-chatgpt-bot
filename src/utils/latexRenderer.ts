@@ -4,8 +4,8 @@
  *   with deterministic disk caching based on content hashes.
  */
 
-import { OUTPUT_DIR } from "@/config/paths.js";
-import logger from "@/utils/logger.js";
+import { OUTPUT_DIR } from "@/config/paths";
+import logger from "@/utils/logger";
 import { createHash } from "crypto";
 import { promises as fs } from "fs";
 import { liteAdaptor } from "mathjax-full/js/adaptors/liteAdaptor.js";

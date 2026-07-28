@@ -10,17 +10,17 @@ import {
   getCharacterDescription,
   getSystemMetadata,
   markdownGuide,
-} from "@/services/characterService.js";
-import { cloneMemory } from "@/store/cloneMemory.js";
-import { userMemory } from "@/store/userMemory.js";
-import { Block, ChatCompletionBlockMessage } from "@/types/block.js";
-import { ChatMessage } from "@/types/chat.js";
-import { applyDiscordMarkdownFormatting } from "@/utils/discordHelpers.js";
-import { getOptional, getRequired } from "@/utils/env.js";
-import { loadUserMemory } from "@/utils/fileUtils.js";
-import { hasUnresolvedGif, resolveGifLinks, resolveGifPlaceholders } from "@/utils/gifResolver.js";
-import { renderMathToPng } from "@/utils/latexRenderer.js";
-import logger from "@/utils/logger.js";
+} from "@/services/characterService";
+import { cloneMemory } from "@/store/cloneMemory";
+import { userMemory } from "@/store/userMemory";
+import { Block, ChatCompletionBlockMessage } from "@/types/block";
+import { ChatMessage } from "@/types/chat";
+import { applyDiscordMarkdownFormatting } from "@/utils/discordHelpers";
+import { getOptional, getRequired } from "@/utils/env";
+import { loadUserMemory } from "@/utils/fileUtils";
+import { hasUnresolvedGif, resolveGifLinks, resolveGifPlaceholders } from "@/utils/gifResolver";
+import { renderMathToPng } from "@/utils/latexRenderer";
+import logger from "@/utils/logger";
 import OpenAI, { APIError } from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat";
 

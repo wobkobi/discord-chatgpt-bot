@@ -4,27 +4,27 @@
  *   updates long-term memory, triggers AI reply generation, and persists chat state.
  */
 
-import { isBotReady } from "@/index.js";
-import { cloneUserId } from "@/services/characterService.js";
-import { generateReply } from "@/services/replyService.js";
-import { updateCloneMemory } from "@/store/cloneMemory.js";
-import { updateUserMemory } from "@/store/userMemory.js";
-import { ConversationContext } from "@/types/chat.js";
+import { isBotReady } from "@/index";
+import { cloneUserId } from "@/services/characterService";
+import { generateReply } from "@/services/replyService";
+import { updateCloneMemory } from "@/store/cloneMemory";
+import { updateUserMemory } from "@/store/userMemory";
+import { ConversationContext } from "@/types/chat";
 import {
   createChatMessage,
   replaceEmojiShortcodes,
   summariseConversation,
-} from "@/utils/discordHelpers.js";
-import { loadConversations, saveConversations } from "@/utils/fileUtils.js";
-import logger from "@/utils/logger.js";
+} from "@/utils/discordHelpers";
+import { loadConversations, saveConversations } from "@/utils/fileUtils";
+import logger from "@/utils/logger";
 import {
   getCooldownConfig,
   getCooldownContext,
   getInterjectionChance,
   isCooldownActive,
   manageCooldown,
-} from "@/utils/rateControl.js";
-import { extractInputs } from "@/utils/urlExtractor/index.js";
+} from "@/utils/rateControl";
+import { extractInputs } from "@/utils/urlExtractor/index";
 import { Client, Message } from "discord.js";
 import OpenAI from "openai";
 

@@ -3,17 +3,17 @@
  * @description Parses and normalises Discord message contents into structured ChatGPT Blocks.
  */
 
-import { Block } from "@/types/block.js";
-import { stripQuery } from "@/utils/discordHelpers.js";
-import { getOptional } from "@/utils/env.js";
-import { extractAttachments, extractStickers } from "@/utils/urlExtractor/extractDiscord.js";
+import { Block } from "@/types/block";
+import { stripQuery } from "@/utils/discordHelpers";
+import { getOptional } from "@/utils/env";
+import { extractAttachments, extractStickers } from "@/utils/urlExtractor/extractDiscord";
 import {
   extractGiphyGifs,
   extractKlipyGifs,
   extractTenorGifs,
-} from "@/utils/urlExtractor/extractGifs.js";
-import { extractInlineImages } from "@/utils/urlExtractor/extractInlineImages.js";
-import { extractSocialEmbeds } from "@/utils/urlExtractor/extractSocialEmbeds.js";
+} from "@/utils/urlExtractor/extractGifs";
+import { extractInlineImages } from "@/utils/urlExtractor/extractInlineImages";
+import { extractSocialEmbeds } from "@/utils/urlExtractor/extractSocialEmbeds";
 import { Message } from "discord.js";
 
 /** Recognises image file extensions for inline detection. */
