@@ -1,5 +1,5 @@
+// src/commands/ask.ts
 /**
- * @file src/commands/ask.ts
  * @description Slash command to privately ask the AI assistant a question.
  */
 
@@ -84,7 +84,13 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     );
     const files = mathBuffers.map((buf, idx) => ({ attachment: buf, name: `maths-${idx}.png` }));
     await interaction.editReply({ content: text, files });
-    await updateUserMemory(userId, { timestamp: Date.now(), content: text });
+    // Both halves of the exchange - the question is the part worth remembering
+    const now = Date.now();
+    await updateUserMemory(userId, {
+      timestamp: now,
+      content: `${interaction.user.username} said: ${question}`,
+    });
+    await updateUserMemory(userId, { timestamp: now, content: `Replied: ${text}` });
   } catch (err) {
     logger.error("[ask] Unexpected error in /ask command:", err);
     await interaction.editReply({ content: "⚠️ Something went wrong." });

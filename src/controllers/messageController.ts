@@ -1,5 +1,5 @@
+// src/controllers/messageController.ts
 /**
- * @file src/controllers/messageController.ts
  * @description Manages incoming Discord messages: applies rate-limits, tracks conversation threads,
  *   updates long-term memory, triggers AI reply generation, and persists chat state.
  */
@@ -104,7 +104,7 @@ async function doReply(
   const guildId = message.guild?.id ?? null;
 
   if (userId === cloneUserId) {
-    updateCloneMemory(userId, { timestamp: Date.now(), content: cleanContent });
+    await updateCloneMemory(userId, { timestamp: Date.now(), content: cleanContent });
   }
 
   const { useCooldown, cooldownTime } = getCooldownConfig(guildId);
@@ -202,7 +202,17 @@ async function doReply(
   const sent = await message.reply({ content: output, files: attachments });
 
   conversation.messages.set(sent.id, createChatMessage(sent, "assistant", client.user!.username));
-  await updateUserMemory(userId, { timestamp: Date.now(), content: `Replied: ${text}` });
+  // Record both halves of the exchange: storing only the reply leaves long-term memory
+  // with no record of anything the user actually said. Name-prefixed so the model can
+  // attribute facts to the right person in a shared channel.
+  const now = Date.now();
+  if (cleanContent) {
+    await updateUserMemory(userId, {
+      timestamp: now,
+      content: `${message.author.username} said: ${cleanContent}`,
+    });
+  }
+  await updateUserMemory(userId, { timestamp: now, content: `Replied: ${text}` });
   scheduleSave();
 }
 
