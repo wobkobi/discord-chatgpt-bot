@@ -1,5 +1,5 @@
+// src/services/characterService.ts
 /**
- * @file src/services/characterService.ts
  * @description Loads persona configuration and builds system prompts and metadata for the AI.
  */
 

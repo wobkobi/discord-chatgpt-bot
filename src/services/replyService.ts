@@ -1,5 +1,5 @@
+// src/services/replyService.ts
 /**
- * @file src/services/replyService.ts
  * @description Assembles the AI prompt from conversation history and multimodal blocks,
  *   invokes OpenAI for chat completion, renders LaTeX maths to PNG buffers, and returns
  *   the cleaned reply text alongside any generated maths images.
@@ -18,13 +18,20 @@ import { ChatMessage } from "@/types/chat.js";
 import { applyDiscordMarkdownFormatting } from "@/utils/discordHelpers.js";
 import { getOptional, getRequired } from "@/utils/env.js";
 import { loadUserMemory } from "@/utils/fileUtils.js";
+import { hasUnresolvedGif, resolveGifLinks, resolveGifPlaceholders } from "@/utils/gifResolver.js";
 import { renderMathToPng } from "@/utils/latexRenderer.js";
 import logger from "@/utils/logger.js";
-import { resolveGifPlaceholders, resolveTenorLinks } from "@/utils/tenorResolver.js";
 import OpenAI, { APIError } from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat";
 
 const MAX_MEMORY_ENTRIES = parseInt(getOptional("MAX_MEMORY_ENTRIES") || "50", 10);
+
+/**
+ * Total completions allowed per reply. A reply that references a GIF which cannot be
+ * verified is re-rolled rather than shipped with a dead link; on the final attempt the
+ * unresolved reference is stripped instead so the user still gets an answer.
+ */
+const MAX_GIF_ATTEMPTS = 3;
 
 /**
  * Strip bot/user mentions and custom emotes from text, keeping only names.
@@ -83,7 +90,7 @@ export async function generateReply(
   }
   const useMarkdownGuide = getOptional("USE_MARKDOWN_GUIDE", "true") !== "false";
   if (useMarkdownGuide) messages.push({ role: "system", content: markdownGuide });
-  if (getOptional("TENOR_API_KEY")) {
+  if (getOptional("GIPHY_API_KEY")) {
     messages.push({
       role: "system",
       content:
@@ -159,66 +166,86 @@ export async function generateReply(
       user: userId,
     });
 
-  let contentText: string;
-  try {
-    let res;
+  const formulaRegex =
+    /```(?:latex)?\s*([\s\S]+?)\s*```|\\\[(.+?)\\\]|\\\((.+?)\\\)|\$\$([\s\S]+?)\$\$/gs;
+
+  let replyText = "";
+  let mathBuffers: Buffer[] = [];
+
+  // A reply naming a GIF that will not verify is re-rolled from scratch. Sampling is
+  // stochastic (temperature 0.9), so a fresh completion usually picks different - and
+  // searchable - keywords. The last attempt strips instead of retrying, so the loop
+  // always terminates with something sendable.
+  for (let attempt = 1; attempt <= MAX_GIF_ATTEMPTS; attempt++) {
+    const isFinalAttempt = attempt === MAX_GIF_ATTEMPTS;
+
+    let contentText: string;
     try {
-      res = await requestCompletion(modelName);
+      let res;
+      try {
+        res = await requestCompletion(modelName);
+      } catch (err: unknown) {
+        // Retry once on the base model - recursing into generateReply re-selects the
+        // same missing fine-tuned model from env and loops forever
+        if (useFT && err instanceof APIError && err.code === "model_not_found") {
+          logger.error(
+            `[replyService] Fine-tuned model not found: ${modelName} - falling back to gpt-4o`,
+          );
+          res = await requestCompletion("gpt-4o");
+        } else {
+          throw err;
+        }
+      }
+
+      contentText = res.choices[0]?.message.content?.trim() || "";
+      if (!contentText) throw new Error("Empty AI response");
+
+      logger.info(
+        `📝 Prompt tokens: ${res.usage?.prompt_tokens ?? "?"}, completion tokens: ${res.usage?.completion_tokens ?? "?"}`,
+      );
     } catch (err: unknown) {
-      // Retry once on the base model - recursing into generateReply re-selects the
-      // same missing fine-tuned model from env and loops forever
-      if (useFT && err instanceof APIError && err.code === "model_not_found") {
-        logger.error(
-          `[replyService] Fine-tuned model not found: ${modelName} - falling back to gpt-4o`,
-        );
-        res = await requestCompletion("gpt-4o");
-      } else {
-        throw err;
+      logger.error("[replyService] OpenAI error:", err);
+      if (err instanceof APIError && err.code === "insufficient_quota") {
+        return { text: "⚠️ The assistant is out of quota.", mathBuffers: [] };
+      }
+      return { text: "⚠️ Sorry, I couldn't complete that request right now.", mathBuffers: [] };
+    }
+
+    const buffers: Buffer[] = [];
+    for (const match of contentText.matchAll(formulaRegex)) {
+      const tex = (match[1] || match[2] || match[3] || match[4] || "").trim();
+      try {
+        const { buffer } = await renderMathToPng(tex);
+        buffers.push(buffer);
+      } catch (err) {
+        logger.warn("[replyService] Math→PNG failed for:", tex, err);
       }
     }
 
-    contentText = res.choices[0]?.message.content?.trim() || "";
-    if (!contentText) throw new Error("Empty AI response");
+    let text = contentText
+      .replace(formulaRegex, "")
+      .replace(/(\r?\n){2,}/g, "\n")
+      .trim();
 
-    logger.info(
-      `📝 Prompt tokens: ${res.usage?.prompt_tokens ?? "?"}, completion tokens: ${res.usage?.completion_tokens ?? "?"}`,
-    );
-  } catch (err: unknown) {
-    logger.error("[replyService] OpenAI error:", err);
-    if (err instanceof APIError && err.code === "insufficient_quota") {
-      return { text: "⚠️ The assistant is out of quota.", mathBuffers: [] };
-    }
-    return { text: "⚠️ Sorry, I couldn't complete that request right now.", mathBuffers: [] };
-  }
-
-  const mathBuffers: Buffer[] = [];
-  const formulaRegex =
-    /```(?:latex)?\s*([\s\S]+?)\s*```|\\\[(.+?)\\\]|\\\((.+?)\\\)|\$\$([\s\S]+?)\$\$/gs;
-  for (const match of contentText.matchAll(formulaRegex)) {
-    const tex = (match[1] || match[2] || match[3] || match[4] || "").trim();
     try {
-      const { buffer } = await renderMathToPng(tex);
-      mathBuffers.push(buffer);
+      text = await resolveGifPlaceholders(text, isFinalAttempt);
     } catch (err) {
-      logger.warn("[replyService] Math→PNG failed for:", tex, err);
+      logger.warn("[replyService] GIF placeholder resolution failed:", err);
     }
+    try {
+      text = await resolveGifLinks(text, isFinalAttempt);
+    } catch (err) {
+      logger.warn("[replyService] GIF link resolution failed:", err);
+    }
+
+    replyText = text;
+    mathBuffers = buffers;
+
+    if (!hasUnresolvedGif(replyText)) break;
+    logger.warn(
+      `[replyService] Unverified GIF in reply - re-rolling (attempt ${attempt}/${MAX_GIF_ATTEMPTS})`,
+    );
   }
 
-  const strippedText = contentText
-    .replace(formulaRegex, "")
-    .replace(/(\r?\n){2,}/g, "\n")
-    .trim();
-
-  let replyText = strippedText;
-  try {
-    replyText = await resolveGifPlaceholders(replyText);
-  } catch (err) {
-    logger.warn("[replyService] GIF placeholder resolution failed:", err);
-  }
-  try {
-    replyText = await resolveTenorLinks(replyText);
-  } catch (err) {
-    logger.warn("[replyService] Tenor resolution failed:", err);
-  }
   return { text: replyText, mathBuffers };
 }

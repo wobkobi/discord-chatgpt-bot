@@ -1,5 +1,5 @@
+// src/utils/urlExtractor/extractSocialEmbeds.ts
 /**
- * @file src/utils/urlExtractor/extractSocialEmbeds.ts
  * @description Processes social media embeds (Twitter, YouTube, Reddit, Instagram, TikTok) into Blocks.
  */
 

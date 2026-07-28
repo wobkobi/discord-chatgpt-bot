@@ -1,5 +1,5 @@
+// src/utils/fileUtils.ts
 /**
- * @file src/utils/fileUtils.ts
  * @description Handles encryption, directory management, and generic data persistence for memory and conversations.
  */
 

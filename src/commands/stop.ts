@@ -1,5 +1,5 @@
+// src/commands/stop.ts
 /**
- * @file src/commands/stop.ts
  * @description Slash command to safely shut down the bot; restricted to the owner only.
  */
 

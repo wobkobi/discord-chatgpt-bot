@@ -1,5 +1,5 @@
+// src/utils/urlExtractor/index.ts
 /**
- * @file src/utils/urlExtractor/index.ts
  * @description Parses and normalises Discord message contents into structured ChatGPT Blocks.
  */
 
@@ -7,7 +7,11 @@ import { Block } from "@/types/block.js";
 import { stripQuery } from "@/utils/discordHelpers.js";
 import { getOptional } from "@/utils/env.js";
 import { extractAttachments, extractStickers } from "@/utils/urlExtractor/extractDiscord.js";
-import { extractGiphyGifs, extractTenorGifs } from "@/utils/urlExtractor/extractGifs.js";
+import {
+  extractGiphyGifs,
+  extractKlipyGifs,
+  extractTenorGifs,
+} from "@/utils/urlExtractor/extractGifs.js";
 import { extractInlineImages } from "@/utils/urlExtractor/extractInlineImages.js";
 import { extractSocialEmbeds } from "@/utils/urlExtractor/extractSocialEmbeds.js";
 import { Message } from "discord.js";
@@ -23,8 +27,8 @@ export const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif)(?:\?|$)/i;
 export async function extractInputs(
   message: Message,
 ): Promise<{ blocks: Block[]; genericUrls: string[] }> {
-  const tenorKey = getOptional("TENOR_API_KEY");
   const giphyKey = getOptional("GIPHY_API_KEY");
+  const klipyKey = getOptional("KLIPY_API_KEY");
   const useFT = getOptional("USE_FINE_TUNED_MODEL") === "true";
   const ftVision = getOptional("FINE_TUNED_SUPPORTS_VISION") === "true";
   const allowInline = !useFT || ftVision;
@@ -36,8 +40,9 @@ export async function extractInputs(
   extractStickers(message, blocks, seenImages);
   await extractAttachments(message, blocks, seenImages);
   await extractInlineImages(message, blocks, seenImages, allowInline);
-  await extractTenorGifs(message, blocks, seenImages, skipEmbeds, tenorKey, allowInline);
+  await extractTenorGifs(message, blocks, seenImages, skipEmbeds, allowInline);
   await extractGiphyGifs(message, blocks, seenImages, skipEmbeds, giphyKey, allowInline);
+  await extractKlipyGifs(message, blocks, seenImages, skipEmbeds, klipyKey, allowInline);
   await extractSocialEmbeds(message, blocks, skipEmbeds);
 
   const genericUrls = collectGenericUrls(message.content, seenImages, skipEmbeds);

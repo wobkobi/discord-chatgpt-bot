@@ -1,5 +1,5 @@
+// src/utils/latexRenderer.ts
 /**
- * @file src/utils/latexRenderer.ts
  * @description Renders LaTeX expressions to SVG/PNG using MathJax and Sharp,
  *   with deterministic disk caching based on content hashes.
  */

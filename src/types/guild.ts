@@ -1,3 +1,4 @@
+// src/types/guild.ts
 /** Guild-level cooldown configuration */
 
 export interface GuildCooldownConfig {

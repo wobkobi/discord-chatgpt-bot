@@ -1,3 +1,4 @@
+// src/types/chat.ts
 /** Role of a chat message */
 export type ChatRole = "user" | "assistant";
 

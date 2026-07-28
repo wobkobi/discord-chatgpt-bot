@@ -1,5 +1,5 @@
+// src/utils/rateControl.ts
 /**
- * @file src/utils/rateControl.ts
  * @description Utilities for managing per-guild message cooldowns and interjection probabilities.
  */
 

@@ -1,5 +1,5 @@
+// src/commands/setbot.ts
 /**
- * @file src/commands/setbot.ts
  * @description Slash command to change the bot's username and/or avatar image. Owner only.
  */
 

@@ -1,5 +1,5 @@
+// src/utils/urlExtractor/extractInlineImages.ts
 /**
- * @file src/utils/urlExtractor/extractInlineImages.ts
  * @description Scans message content for direct image URLs and inlines or references them as Blocks.
  */
 
@@ -8,7 +8,14 @@ import { stripQuery } from "@/utils/discordHelpers.js";
 import logger from "@/utils/logger.js";
 import { Message } from "discord.js";
 
-const TRUSTED_IMAGE_HOSTS = ["cdn.discordapp.com", "media.tenor.com", "media.giphy.com"];
+/**
+ * Hosts whose image URLs are passed to the model directly instead of being downloaded
+ * and inlined. Tenor and Giphy shard across numbered CDN hosts (media1.tenor.com,
+ * media2.giphy.com, ...), so the digits must be matched rather than a fixed hostname;
+ * Klipy serves everything from a single static host.
+ */
+const TRUSTED_IMAGE_HOST_RE =
+  /^(?:cdn\.discordapp\.com|static\.klipy\.com|media\d*\.(?:tenor|giphy)\.com)$/i;
 
 /** Largest untrusted image the bot will download and inline as base64. */
 const MAX_INLINE_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -69,7 +76,7 @@ export async function extractInlineImages(
     if (seen.has(key)) continue;
     const host = new URL(rawUrl).hostname;
 
-    if (TRUSTED_IMAGE_HOSTS.includes(host)) {
+    if (TRUSTED_IMAGE_HOST_RE.test(host)) {
       blocks.push({ type: "image_url", image_url: { url: rawUrl } });
     } else if (isPrivateHost(host)) {
       logger.warn(`[extractInlineImages] Blocked private-network URL ${rawUrl}`);
