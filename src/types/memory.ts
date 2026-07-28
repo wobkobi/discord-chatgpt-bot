@@ -1,3 +1,4 @@
+// src/types/memory.ts
 /** Memory logs for user/clone recollections */
 export interface GeneralMemoryEntry {
   timestamp: number; // ms since epoch

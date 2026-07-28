@@ -1,5 +1,5 @@
+// src/config/index.ts
 /**
- * @file src/config/index.ts
  * @description Defines, loads and persists per-guild settings: cooldown configuration and interjection rate.
  */
 

@@ -1,5 +1,5 @@
+// src/utils/env.ts
 /**
- * @file src/utils/env.ts
  * @description Manages loading of environment variables and provides helpers to access them.
  *
  *   Call `initialiseEnv()` once at application start (e.g. in your `index.ts`) to load `.env`.

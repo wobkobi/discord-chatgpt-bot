@@ -1,5 +1,5 @@
+// src/commands/setinterjection.ts
 /**
- * @file src/commands/setinterjection.ts
  * @description Slash command to configure how often the bot randomly interjects when not mentioned.
  *   Restricted to the bot owner or server administrators. Stores a "1 in N" chance (minimum N=50).
  */

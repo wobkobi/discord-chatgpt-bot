@@ -1,5 +1,5 @@
+// src/commands/setCooldown.ts
 /**
- * @file src/commands/setCooldown.ts
  * @description Slash command to configure this server's message cooldown settings.
  *   Restricted to the bot owner or server administrators.
  */

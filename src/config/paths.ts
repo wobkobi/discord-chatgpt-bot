@@ -1,5 +1,5 @@
+// src/config/paths.ts
 /**
- * @file src/config/paths.ts
  * @description Centralised definitions of all filesystem paths used by the bot.
  */
 

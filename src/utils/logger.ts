@@ -1,5 +1,5 @@
+// src/utils/logger.ts
 /**
- * @file src/utils/logger.ts
  * @description Configures and exports a Winston logger with console and file transports,
  *   including daily rotation for combined logs and error-specific logs, and a static "latest.log" symlink.
  *   Uses timestamped formatting, error stack inclusion, and emits an audible bell on error entries.

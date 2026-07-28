@@ -1,5 +1,5 @@
+// src/index.ts
 /**
- * @file src/index.ts
  * @description Entry point for initialising and running the Discord bot, including command loading,
  * registration, event handling, and AI integration.
  *

@@ -1,5 +1,5 @@
+// src/store/userMemory.ts
 /**
- * @file src/store/userMemory.ts
  * @description Manages long-term memory entries for regular users, stored in-memory and persisted to disk.
  */
 

@@ -1,5 +1,5 @@
+// src/utils/urlExtractor/extractDiscord.ts
 /**
- * @file src/utils/urlExtractor/extractDiscord.ts
  * @description Captures Discord stickers and attachments, converting them into ChatGPT Blocks.
  */
 
