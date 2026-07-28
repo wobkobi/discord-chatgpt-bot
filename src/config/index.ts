@@ -3,9 +3,9 @@
  * @description Defines, loads and persists per-guild settings: cooldown configuration and interjection rate.
  */
 
-import { DATA_DIR, GUILD_CONFIG_FILE } from "@/config/paths.js";
-import { GuildConfig, GuildCooldownConfig } from "@/types/guild.js";
-import logger from "@/utils/logger.js";
+import { DATA_DIR, GUILD_CONFIG_FILE } from "@/config/paths";
+import { GuildConfig, GuildCooldownConfig } from "@/types/guild";
+import logger from "@/utils/logger";
 import fs from "fs/promises";
 
 /** Default cooldown: on, 2.5 s, per-user. */

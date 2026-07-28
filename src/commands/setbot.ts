@@ -3,8 +3,8 @@
  * @description Slash command to change the bot's username and/or avatar image. Owner only.
  */
 
-import { getRequired } from "@/utils/env.js";
-import logger from "@/utils/logger.js";
+import { getRequired } from "@/utils/env";
+import logger from "@/utils/logger";
 import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
 
 const OWNER_ID = getRequired("OWNER_ID");

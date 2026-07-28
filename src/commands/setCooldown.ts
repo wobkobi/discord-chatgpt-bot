@@ -9,10 +9,10 @@ import {
   defaultInterjectionRate,
   guildConfigs,
   saveGuildConfigs,
-} from "@/config/index.js";
-import { GuildConfig } from "@/types/guild.js";
-import { getRequired } from "@/utils/env.js";
-import logger from "@/utils/logger.js";
+} from "@/config/index";
+import { GuildConfig } from "@/types/guild";
+import { getRequired } from "@/utils/env";
+import logger from "@/utils/logger";
 import {
   ChatInputCommandInteraction,
   InteractionContextType,

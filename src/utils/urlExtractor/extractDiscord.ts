@@ -3,9 +3,9 @@
  * @description Captures Discord stickers and attachments, converting them into ChatGPT Blocks.
  */
 
-import { Block } from "@/types/block.js";
-import { stripQuery } from "@/utils/discordHelpers.js";
-import logger from "@/utils/logger.js";
+import { Block } from "@/types/block";
+import { stripQuery } from "@/utils/discordHelpers";
+import logger from "@/utils/logger";
 import { Message } from "discord.js";
 import fetch from "node-fetch";
 

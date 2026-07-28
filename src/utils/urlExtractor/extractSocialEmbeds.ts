@@ -3,10 +3,10 @@
  * @description Processes social media embeds (Twitter, YouTube, Reddit, Instagram, TikTok) into Blocks.
  */
 
-import { Block } from "@/types/block.js";
-import { stripQuery } from "@/utils/discordHelpers.js";
-import logger from "@/utils/logger.js";
-import { IMAGE_EXT_RE } from "@/utils/urlExtractor/index.js";
+import { Block } from "@/types/block";
+import { stripQuery } from "@/utils/discordHelpers";
+import logger from "@/utils/logger";
+import { IMAGE_EXT_RE } from "@/utils/urlExtractor/index";
 import { Message } from "discord.js";
 import sanitizeHtml from "sanitize-html";
 

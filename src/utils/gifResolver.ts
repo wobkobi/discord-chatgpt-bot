@@ -3,8 +3,8 @@
 // Tenor's API was discontinued, so Giphy is the only search backend; inbound tenor.com
 // links from users are handled separately in urlExtractor/extractGifs.ts.
 
-import { getOptional } from "@/utils/env.js";
-import logger from "@/utils/logger.js";
+import { getOptional } from "@/utils/env";
+import logger from "@/utils/logger";
 import { GifsResult, GiphyFetch, Rating } from "@giphy/js-fetch-api";
 
 /** Rendition set attached to a Giphy result; `@giphy/js-types` is not a direct dependency. */

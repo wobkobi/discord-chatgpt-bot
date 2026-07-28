@@ -3,10 +3,10 @@
  * @description Fetches and embeds GIFs from Tenor, Giphy, and Klipy links into ChatGPT Blocks.
  */
 
-import { Block } from "@/types/block.js";
-import { stripQuery } from "@/utils/discordHelpers.js";
-import logger from "@/utils/logger.js";
-import { IMAGE_EXT_RE } from "@/utils/urlExtractor/index.js";
+import { Block } from "@/types/block";
+import { stripQuery } from "@/utils/discordHelpers";
+import logger from "@/utils/logger";
+import { IMAGE_EXT_RE } from "@/utils/urlExtractor/index";
 import { GiphyFetch } from "@giphy/js-fetch-api";
 import { Message } from "discord.js";
 

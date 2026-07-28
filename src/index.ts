@@ -7,12 +7,12 @@
  * loads per-guild configurations, sets up message and interaction handlers, and manages graceful shutdown.
  */
 
-import { loadGuildConfigs } from "@/config/index.js";
-import { handleNewMessage, run } from "@/controllers/messageController.js";
-import { initialiseCloneMemory } from "@/store/cloneMemory.js";
-import { initialiseUserMemory } from "@/store/userMemory.js";
-import { getRequired, initialiseEnv } from "@/utils/env.js";
-import logger from "@/utils/logger.js";
+import { loadGuildConfigs } from "@/config/index";
+import { handleNewMessage, run } from "@/controllers/messageController";
+import { initialiseCloneMemory } from "@/store/cloneMemory";
+import { initialiseUserMemory } from "@/store/userMemory";
+import { getRequired, initialiseEnv } from "@/utils/env";
+import logger from "@/utils/logger";
 import { REST } from "@discordjs/rest";
 import { Routes } from "discord-api-types/v10";
 import {

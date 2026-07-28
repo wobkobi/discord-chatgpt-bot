@@ -5,8 +5,8 @@
  *   and stripping URL queries.
  */
 
-import { ChatMessage, ConversationContext } from "@/types/chat.js";
-import logger from "@/utils/logger.js";
+import { ChatMessage, ConversationContext } from "@/types/chat";
+import logger from "@/utils/logger";
 import { Guild, Message } from "discord.js";
 
 /**

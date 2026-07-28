@@ -1,6 +1,6 @@
 // src/types/index.ts
-export * from "@/types/block.js";
-export * from "@/types/chat.js";
-export * from "@/types/guild.js";
-export * from "@/types/memory.js";
-export * from "@/types/persona.js";
+export * from "@/types/block";
+export * from "@/types/chat";
+export * from "@/types/guild";
+export * from "@/types/memory";
+export * from "@/types/persona";

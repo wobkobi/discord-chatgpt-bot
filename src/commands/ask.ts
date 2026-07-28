@@ -3,18 +3,18 @@
  * @description Slash command to privately ask the AI assistant a question.
  */
 
-import { generateReply } from "@/services/replyService.js";
-import { updateUserMemory } from "@/store/userMemory.js";
-import type { Block, ChatMessage } from "@/types/index.js";
-import { getRequired } from "@/utils/env.js";
-import logger from "@/utils/logger.js";
+import { generateReply } from "@/services/replyService";
+import { updateUserMemory } from "@/store/userMemory";
+import type { Block, ChatMessage } from "@/types/index";
+import { getRequired } from "@/utils/env";
+import logger from "@/utils/logger";
 import {
   getCooldownConfig,
   getCooldownContext,
   isCooldownActive,
   manageCooldown,
-} from "@/utils/rateControl.js";
-import { extractInputs } from "@/utils/urlExtractor/index.js";
+} from "@/utils/rateControl";
+import { extractInputs } from "@/utils/urlExtractor/index";
 import {
   ChatInputCommandInteraction,
   Collection,

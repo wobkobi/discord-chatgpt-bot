@@ -3,10 +3,10 @@
  * @description Manages the clone memory store: logs interactions for the cloned user persona and persists them to disk.
  */
 
-import { GeneralMemoryEntry } from "@/types/memory.js";
-import { loadCloneMemory, saveCloneMemory } from "@/utils/fileUtils.js";
-import logger from "@/utils/logger.js";
-import { trimMemory } from "@/utils/trimMemory.js";
+import { GeneralMemoryEntry } from "@/types/memory";
+import { loadCloneMemory, saveCloneMemory } from "@/utils/fileUtils";
+import logger from "@/utils/logger";
+import { trimMemory } from "@/utils/trimMemory";
 
 /** In-memory cache of clone memory entries, keyed by Discord user ID. */
 export const cloneMemory = new Map<string, GeneralMemoryEntry[]>();

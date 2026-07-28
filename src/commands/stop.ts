@@ -3,8 +3,8 @@
  * @description Slash command to safely shut down the bot; restricted to the owner only.
  */
 
-import { getRequired } from "@/utils/env.js";
-import logger from "@/utils/logger.js";
+import { getRequired } from "@/utils/env";
+import logger from "@/utils/logger";
 import { ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from "discord.js";
 
 /**

@@ -5,8 +5,8 @@
  *   Uses timestamped formatting, error stack inclusion, and emits an audible bell on error entries.
  */
 
-import { LOGS_DIR, LOGS_ERROR_DIR } from "@/config/paths.js";
-import { getOptional, initialiseEnv } from "@/utils/env.js";
+import { LOGS_DIR, LOGS_ERROR_DIR } from "@/config/paths";
+import { getOptional, initialiseEnv } from "@/utils/env";
 import fs from "fs";
 import { TransformableInfo } from "logform";
 import path from "path";

@@ -3,9 +3,9 @@
  * @description Loads persona configuration and builds system prompts and metadata for the AI.
  */
 
-import { userMemory } from "@/store/userMemory.js";
-import { PersonaConfig } from "@/types/persona.js";
-import logger from "@/utils/logger.js";
+import { userMemory } from "@/store/userMemory";
+import { PersonaConfig } from "@/types/persona";
+import logger from "@/utils/logger";
 import { readFileSync } from "fs";
 import { DateTime } from "luxon";
 import { createRequire } from "module";
