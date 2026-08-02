@@ -46,6 +46,147 @@ function sanitiseInput(text: string): string {
     .trim();
 }
 
+/** Error codes OpenAI uses when the account cannot pay for the request. */
+const BILLING_ERROR_CODES = new Set([
+  "insufficient_quota",
+  "billing_hard_limit_reached",
+  "billing_not_active",
+  "account_deactivated",
+]);
+
+/** Node/undici socket codes seen when the request never reaches OpenAI. */
+const NETWORK_ERROR_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+/** Thrown when a completion comes back with no content; matched again when classifying. */
+const EMPTY_RESPONSE = "Empty AI response";
+
+/** Shown when the failure matches none of the recognised cases. */
+const GENERIC_FAILURE_TEXT = "⚠️ Sorry, I couldn't complete that request right now.";
+
+/** Fields worth reading off a failed request, flattened from the several error shapes. */
+interface ApiFailure {
+  status: number;
+  code: string;
+  type: string;
+  message: string;
+}
+
+/**
+ * Flatten a thrown value into the fields used to classify it.
+ *
+ * The shape is read directly rather than narrowed with `instanceof APIError`, which fails
+ * whenever a second copy of the SDK is resolved anywhere in the tree. `cause.code` is
+ * picked up as a fallback because undici socket failures carry their code there.
+ * @param err - Value thrown by the OpenAI client.
+ * @returns Status, code, type and message, zeroed or blank where absent.
+ */
+function toApiFailure(err: unknown): ApiFailure {
+  if (typeof err !== "object" || err === null) {
+    return { status: 0, code: "", type: "", message: String(err) };
+  }
+  const { status, code, type, message, cause } = err as Record<string, unknown>;
+  const causeCode =
+    typeof cause === "object" && cause !== null ? (cause as { code?: unknown }).code : undefined;
+  return {
+    status: typeof status === "number" ? status : 0,
+    code: typeof code === "string" ? code : typeof causeCode === "string" ? causeCode : "",
+    type: typeof type === "string" ? type : "",
+    message: typeof message === "string" ? message : "",
+  };
+}
+
+/**
+ * Failures worth explaining to the user, tested in order - the first match wins.
+ *
+ * Billing sits above rate limiting because a spent balance and an ordinary throttle both
+ * arrive as 429 and are told apart only by the code or the wording. Network faults sit
+ * near the bottom because they are identified by a missing status rather than a code, so
+ * anything carrying a real HTTP status should have been claimed already.
+ */
+const KNOWN_FAILURES: ReadonlyArray<{
+  reason: string;
+  test: (failure: ApiFailure) => boolean;
+  text: string;
+}> = [
+  {
+    reason: "empty completion",
+    test: (f) => f.message === EMPTY_RESPONSE,
+    text: "⚠️ OpenAI sent back an empty reply - ask me again.",
+  },
+  {
+    reason: "out of credit",
+    test: (f) =>
+      BILLING_ERROR_CODES.has(f.code) ||
+      BILLING_ERROR_CODES.has(f.type) ||
+      /insufficient[_ ]quota|exceeded your current quota|billing/i.test(f.message),
+    text: "⚠️ I'm out of OpenAI credit - fill my belly with more money then i might reply again.",
+  },
+  {
+    reason: "rejected API key",
+    test: (f) => f.status === 401 || f.code === "invalid_api_key",
+    text: "⚠️ My OpenAI key got rejected - it needs replacing before I can reply.",
+  },
+  {
+    reason: "model or region not permitted",
+    test: (f) =>
+      f.status === 403 ||
+      f.status === 404 ||
+      f.code === "model_not_found" ||
+      f.code === "unsupported_country_region_territory",
+    text: "⚠️ My OpenAI account isn't allowed to use that model.",
+  },
+  {
+    reason: "context too long",
+    test: (f) =>
+      f.code === "context_length_exceeded" ||
+      f.code === "string_above_max_length" ||
+      /maximum context length/i.test(f.message),
+    text: "⚠️ This thread got too long for me to process - start a fresh one and I'll be fine.",
+  },
+  {
+    reason: "content policy",
+    test: (f) =>
+      f.code === "content_policy_violation" ||
+      f.code === "content_filter" ||
+      /content[_ ]policy|safety system/i.test(f.message),
+    text: "⚠️ OpenAI blocked that one on content policy - try wording it differently.",
+  },
+  {
+    reason: "unreadable attachment",
+    test: (f) =>
+      f.code === "invalid_image_url" ||
+      f.code === "image_parse_error" ||
+      f.code === "invalid_base64_image" ||
+      /invalid image|unsupported image|could not process image/i.test(f.message),
+    text: "⚠️ I couldn't read one of those attachments - try re-uploading it.",
+  },
+  {
+    reason: "rate limited",
+    test: (f) => f.status === 429 || f.code === "rate_limit_exceeded",
+    text: "⚠️ OpenAI is rate limiting me - give it a moment and ask again.",
+  },
+  {
+    reason: "network fault",
+    test: (f) =>
+      NETWORK_ERROR_CODES.has(f.code) ||
+      (f.status === 0 && /connection error|timed out|timeout|fetch failed|socket/i.test(f.message)),
+    text: "⚠️ I couldn't reach OpenAI - the connection dropped. Try again in a bit.",
+  },
+  {
+    reason: "OpenAI server error",
+    test: (f) => f.status >= 500 || f.code === "server_error" || /overloaded/i.test(f.message),
+    text: "⚠️ OpenAI is having problems on their end - try again shortly.",
+  },
+];
+
 /**
  * Generate an AI reply given the conversation context and extracted inputs.
  * @param convoHistory - Map of message IDs to ChatMessage for the current thread.
@@ -198,17 +339,21 @@ export async function generateReply(
       }
 
       contentText = res.choices[0]?.message.content?.trim() || "";
-      if (!contentText) throw new Error("Empty AI response");
+      if (!contentText) throw new Error(EMPTY_RESPONSE);
 
       logger.info(
         `📝 Prompt tokens: ${res.usage?.prompt_tokens ?? "?"}, completion tokens: ${res.usage?.completion_tokens ?? "?"}`,
       );
     } catch (err: unknown) {
-      logger.error("[replyService] OpenAI error:", err);
-      if (err instanceof APIError && err.code === "insufficient_quota") {
-        return { text: "⚠️ The assistant is out of quota.", mathBuffers: [] };
-      }
-      return { text: "⚠️ Sorry, I couldn't complete that request right now.", mathBuffers: [] };
+      const failure = toApiFailure(err);
+      const known = KNOWN_FAILURES.find((entry) => entry.test(failure));
+      // Winston's printf drops splat args, so the fields have to be in the message itself
+      logger.error(
+        `[replyService] OpenAI call failed (${known?.reason ?? "unclassified"}): status=${failure.status || "-"} code=${failure.code || "-"} type=${failure.type || "-"} message=${failure.message}`,
+      );
+      // An unrecognised failure is the only one whose stack is worth the log noise
+      if (!known && err instanceof Error && err.stack) logger.error(err.stack);
+      return { text: known?.text ?? GENERIC_FAILURE_TEXT, mathBuffers: [] };
     }
 
     const buffers: Buffer[] = [];
