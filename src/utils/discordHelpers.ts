@@ -41,13 +41,22 @@ export function applyDiscordMarkdownFormatting(text: string): string {
 
 /**
  * Replace colon-based emoji shortcodes (e.g. `:smile:`) with actual guild emoji tags.
+ *
+ * The model writes shortcodes in whatever case it feels like - usually all lowercase, since
+ * that is the convention for built-in emoji - so `:britishcat:` has to resolve the emote named
+ * `britishCat` rather than ship as literal text. An exact match still wins, because a guild may
+ * hold two emotes whose names differ only by case; the tag is built from the emote's own name so
+ * the canonical casing is restored either way.
  * @param text - The message text containing colon-based shortcodes.
  * @param guild - The Discord guild from which to resolve custom emoji.
  * @returns The text with shortcodes replaced by `<:name:id>` where available.
  */
 export function replaceEmojiShortcodes(text: string, guild: Guild): string {
-  return text.replace(/:([A-Za-z0-9_]+):/g, (_, name) => {
-    const emoji = guild.emojis.cache.find((e) => e.name === name);
+  return text.replace(/:([A-Za-z0-9_]+):/g, (_, name: string) => {
+    const lower = name.toLowerCase();
+    const emoji =
+      guild.emojis.cache.find((e) => e.name === name) ??
+      guild.emojis.cache.find((e) => e.name?.toLowerCase() === lower);
     return emoji ? `<:${emoji.name}:${emoji.id}>` : `:${name}:`;
   });
 }
