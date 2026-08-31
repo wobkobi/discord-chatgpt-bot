@@ -87,6 +87,9 @@ export function isBotReady(): boolean {
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
       GatewayIntentBits.DirectMessages,
+      // Without this the emoji cache is seeded once at startup and never updated, so emotes
+      // added, renamed or deleted while the bot runs resolve to dead IDs.
+      GatewayIntentBits.GuildExpressions,
     ],
     partials: [Partials.Channel],
   });
