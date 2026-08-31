@@ -34,6 +34,12 @@ const MAX_MEMORY_ENTRIES = parseInt(getOptional("MAX_MEMORY_ENTRIES") || "50", 1
 const MAX_GIF_ATTEMPTS = 3;
 
 /**
+ * Cap on emote names listed in the prompt. A boosted guild may hold several hundred; the whole
+ * roster ships on every request, so the tail is dropped rather than paid for each time.
+ */
+const MAX_EMOTE_ROSTER = 200;
+
+/**
  * Strip bot/user mentions and custom emotes from text, keeping only names.
  * @param text - Raw user or system text to sanitize.
  * @returns Cleaned text with mentions removed.
@@ -196,6 +202,7 @@ const KNOWN_FAILURES: ReadonlyArray<{
  * @param channelHistory - Optional recent channel messages string (timestamped).
  * @param blocks - Pre-extracted multimodal blocks (text, images, files).
  * @param genericUrls - Remaining URLs to include as text blocks.
+ * @param emoteNames - Names of the custom emotes on the originating guild.
  * @returns Promise resolving to `{ text, mathBuffers }`.
  */
 export async function generateReply(
@@ -206,6 +213,7 @@ export async function generateReply(
   channelHistory?: string,
   blocks: Block[] = [],
   genericUrls: string[] = [],
+  emoteNames: string[] = [],
 ): Promise<{ text: string; mathBuffers: Buffer[] }> {
   if (!userMemory.has(userId)) {
     try {
@@ -231,6 +239,18 @@ export async function generateReply(
   }
   const useMarkdownGuide = getOptional("USE_MARKDOWN_GUIDE", "true") !== "false";
   if (useMarkdownGuide) messages.push({ role: "system", content: markdownGuide });
+  // Listed by name only: the model never sees IDs, so it cannot copy a stale one, and
+  // replaceEmojiShortcodes resolves the shortcode against the live cache on the way out.
+  if (emoteNames.length) {
+    messages.push({
+      role: "system",
+      content:
+        "Custom emotes on this server, written as :name: shortcodes:\n" +
+        emoteNames.slice(0, MAX_EMOTE_ROSTER).join(", ") +
+        "\nOnly these exist. Never invent an emote name and never write a numeric emote ID - " +
+        "anything not on this list is silently dropped from your reply.",
+    });
+  }
   if (getOptional("GIPHY_API_KEY")) {
     messages.push({
       role: "system",

@@ -6,6 +6,7 @@
 import { generateReply } from "@/services/replyService";
 import { updateUserMemory } from "@/store/userMemory";
 import type { Block, ChatMessage } from "@/types/index";
+import { replaceEmojiShortcodes } from "@/utils/discordHelpers";
 import { getRequired } from "@/utils/env";
 import logger from "@/utils/logger";
 import {
@@ -73,6 +74,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     const { blocks, genericUrls } = await extractInputs(fakeMessage);
     blocks.unshift({ type: "text", text: question } as Block);
 
+    const emoteNames = interaction.guild
+      ? interaction.guild.emojis.cache.map((e) => e.name).filter((n): n is string => n !== null)
+      : [];
+
     const { text, mathBuffers } = await generateReply(
       convoHistory,
       messageId,
@@ -81,16 +86,20 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       undefined,
       blocks,
       genericUrls,
+      emoteNames,
     );
     const files = mathBuffers.map((buf, idx) => ({ attachment: buf, name: `maths-${idx}.png` }));
-    await interaction.editReply({ content: text, files });
+    const resolved = interaction.guild ? replaceEmojiShortcodes(text, interaction.guild) : text;
+    const output = resolved || text;
+    await interaction.editReply({ content: output, files });
     // Both halves of the exchange - the question is the part worth remembering
     const now = Date.now();
     await updateUserMemory(userId, {
       timestamp: now,
       content: `${interaction.user.username} said: ${question}`,
     });
-    await updateUserMemory(userId, { timestamp: now, content: `Replied: ${text}` });
+    // Matches messageController: memory records the sent text so dropped emotes are not replayed
+    await updateUserMemory(userId, { timestamp: now, content: `Replied: ${output}` });
   } catch (err) {
     logger.error("[ask] Unexpected error in /ask command:", err);
     await interaction.editReply({ content: "⚠️ Something went wrong." });

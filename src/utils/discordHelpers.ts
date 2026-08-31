@@ -40,16 +40,51 @@ export function applyDiscordMarkdownFormatting(text: string): string {
 }
 
 /**
- * Replace colon-based emoji shortcodes (e.g. `:smile:`) with actual guild emoji tags.
- * @param text - The message text containing colon-based shortcodes.
+ * Resolve every emote reference in a message against the guild's live emoji cache.
+ *
+ * The model writes shortcodes in whatever case it feels like - usually all lowercase, since
+ * that is the convention for built-in emoji - so `:britishcat:` has to resolve the emote named
+ * `britishCat` rather than ship as literal text. An exact match still wins, because a guild may
+ * hold two emotes whose names differ only by case.
+ *
+ * Shortcodes and already-written tags are matched in one alternation so a well-formed
+ * `<:name:id>` is consumed whole. Matching shortcodes on their own rewrites the `:name:` nested
+ * inside such a tag and yields `<<:name:id>id>`, which renders as nothing.
+ *
+ * A tag is re-resolved by name rather than trusted, because an emote that has since been renamed,
+ * deleted or re-uploaded carries a dead ID. Resolution goes through `emoji.toString()`, which
+ * supplies the `a:` prefix animated emotes require - an animated emote sent as a static
+ * `<:name:id>` tag does not render.
+ *
+ * References that resolve to nothing are dropped along with their leading whitespace, since a
+ * literal `:name:` or a dead tag is noise to the reader. All-digit shortcodes are left untouched
+ * so clock times such as `10:30:45` survive.
+ * @param text - The message text containing shortcodes or emote tags.
  * @param guild - The Discord guild from which to resolve custom emoji.
- * @returns The text with shortcodes replaced by `<:name:id>` where available.
+ * @returns The text with each reference replaced by a live tag, and unresolvable ones removed.
  */
 export function replaceEmojiShortcodes(text: string, guild: Guild): string {
-  return text.replace(/:([A-Za-z0-9_]+):/g, (_, name) => {
-    const emoji = guild.emojis.cache.find((e) => e.name === name);
-    return emoji ? `<:${emoji.name}:${emoji.id}>` : `:${name}:`;
-  });
+  const resolve = (name: string): string | null => {
+    const lower = name.toLowerCase();
+    const emoji =
+      guild.emojis.cache.find((e) => e.name === name) ??
+      guild.emojis.cache.find((e) => e.name?.toLowerCase() === lower);
+    return emoji ? emoji.toString() : null;
+  };
+
+  return text
+    .replace(
+      /(\s*)(?:<a?:([A-Za-z0-9_]+):\d+>|:([A-Za-z0-9_]{2,}):)/g,
+      (match: string, space: string, tagName?: string, shortcode?: string) => {
+        const name = tagName ?? shortcode;
+        if (!name) return match;
+        // A bare :30: is a timestamp fragment, not an emote; only tags may be all digits
+        if (!tagName && !/[A-Za-z_]/.test(name)) return match;
+        const tag = resolve(name);
+        return tag ? `${space}${tag}` : "";
+      },
+    )
+    .trim();
 }
 
 /**

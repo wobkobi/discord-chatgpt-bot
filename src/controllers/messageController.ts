@@ -187,6 +187,12 @@ async function doReply(
     });
   }
 
+  // Read straight off the cache so a rename or a newly uploaded emote is reflected on the
+  // next reply rather than at the next restart.
+  const emoteNames = message.guild
+    ? message.guild.emojis.cache.map((e) => e.name).filter((n): n is string => n !== null)
+    : [];
+
   const { text, mathBuffers } = await generateReply(
     conversation.messages,
     message.id,
@@ -195,10 +201,14 @@ async function doReply(
     channelHistory,
     blocks,
     genericUrls,
+    emoteNames,
   );
 
   const attachments = mathBuffers.map((buf, i) => ({ attachment: buf, name: `math-${i}.png` }));
-  const output = message.guild ? replaceEmojiShortcodes(text, message.guild) : text;
+  const resolved = message.guild ? replaceEmojiShortcodes(text, message.guild) : text;
+  // A reply that was nothing but unresolvable emotes resolves to an empty string, which the
+  // Discord API rejects; send the unresolved text rather than throwing away the whole reply.
+  const output = resolved || text;
   const sent = await message.reply({ content: output, files: attachments });
 
   conversation.messages.set(sent.id, createChatMessage(sent, "assistant", client.user!.username));
@@ -212,7 +222,10 @@ async function doReply(
       content: `${message.author.username} said: ${cleanContent}`,
     });
   }
-  await updateUserMemory(userId, { timestamp: now, content: `Replied: ${text}` });
+  // Store what was actually sent, not the raw completion: an emote the guild does not have is
+  // dropped on the way out, and recording the shortcode anyway would feed the invented name
+  // back through long-term memory and teach the model to keep using it.
+  await updateUserMemory(userId, { timestamp: now, content: `Replied: ${output}` });
   scheduleSave();
 }
 
