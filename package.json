@@ -50,7 +50,7 @@
     "@types/sanitize-html": "^2.16.1",
     "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-jsdoc": "^64.3.2",
+    "eslint-plugin-jsdoc": "^64.3.3",
     "eslint-plugin-prettier": "^5.5.6",
     "globals": "^17.11.0",
     "lint-staged": "^17.4.1",
