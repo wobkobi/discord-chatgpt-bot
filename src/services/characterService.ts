@@ -60,7 +60,7 @@ export const markdownGuide = loadMarkdownGuide();
  * @param userId - Discord user ID; if it equals cloneUserId, a style snippet is appended.
  * @returns Fully assembled persona prompt (without timestamp or markdown guide).
  */
-export async function getCharacterDescription(userId?: string): Promise<string> {
+export function getCharacterDescription(userId?: string): string {
   let description = persona.baseDescription;
 
   if (userId === cloneUserId && userMemory.has(userId)) {

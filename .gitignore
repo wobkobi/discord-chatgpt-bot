@@ -1,6 +1,6 @@
 # env
 .env
-.env.local
+.env*.local
 
 # runtime data
 data/*
@@ -13,9 +13,18 @@ build/
 node_modules/
 yarn.lock
 
-# config — user-specific files are gitignored, examples are committed
+# config - user-specific files are gitignored, examples are committed
 /src/config/persona.json
 /src/config/markdownGuide.md
+
+# typescript
+*.tsbuildinfo
+
+# testing
+/coverage
+
+# debug
+npm-debug.log*
 
 # editor
 .vscode/*

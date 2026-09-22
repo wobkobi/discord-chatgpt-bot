@@ -82,7 +82,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   }
 
   try {
-    await interaction.client.user!.edit(editPayload);
+    await interaction.client.user.edit(editPayload);
     logger.info(`[setbot] Identity updated by owner ${interaction.user.id}`);
     const messages: string[] = [];
     if (editPayload.username) messages.push(`✅ Username updated to **${editPayload.username}**.`);

@@ -234,7 +234,7 @@ export async function generateReply(
   if (usePersona) {
     messages.push({
       role: "system",
-      content: sanitiseInput(await getCharacterDescription(userId)),
+      content: sanitiseInput(getCharacterDescription(userId)),
     });
   }
   const useMarkdownGuide = getOptional("USE_MARKDOWN_GUIDE", "true") !== "false";
@@ -288,7 +288,7 @@ export async function generateReply(
     if (!turn) break;
     const cleaned = sanitiseInput(applyDiscordMarkdownFormatting(turn.content));
     priorChain.unshift({
-      role: turn.role as "user" | "assistant",
+      role: turn.role,
       content: turn.role === "user" ? `${turn.name} asked: ${cleaned}` : cleaned,
     });
     cursor = turn.replyToId;
@@ -308,7 +308,7 @@ export async function generateReply(
     ...(useFT && !ftVision ? blocks.filter((b) => b.type === "text") : blocks),
     ...genericUrls.map((url) => ({ type: "text" as const, text: sanitiseInput(`[link] ${url}`) })),
   ];
-  messages.push({ role: "user", content: currentContent } as ChatCompletionBlockMessage);
+  messages.push({ role: "user", content: currentContent });
 
   logger.info(
     `📝 Prompt → model=${modelName}, blocks=${currentContent.length}, thread depth=${convoHistory.size}`,
@@ -318,7 +318,7 @@ export async function generateReply(
   const requestCompletion = (model: string): Promise<OpenAI.Chat.Completions.ChatCompletion> =>
     openai.chat.completions.create({
       model,
-      messages: messages as unknown as ChatCompletionMessageParam[],
+      messages,
       temperature: 0.9,
       top_p: 0.9,
       frequency_penalty: 0.1,

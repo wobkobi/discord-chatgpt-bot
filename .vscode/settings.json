@@ -1,5 +1,12 @@
 {
   "files.eol": "\n",
+  // Tell VS Code ESLint extension we're using flat config
+  "eslint.useFlatConfig": true,
+  // Run ESLint fixes when explicitly requested
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  // Use Prettier as the default formatter, ESLint only for lint
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnSave": true,
   "[typescript]": {
@@ -7,5 +14,7 @@
   },
   "[javascript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  }
+  },
+  "eslint.format.enable": false,
+  "js/ts.tsdk.path": "node_modules\\typescript\\lib"
 }

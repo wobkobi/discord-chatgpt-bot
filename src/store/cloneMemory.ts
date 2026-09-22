@@ -13,9 +13,8 @@ export const cloneMemory = new Map<string, GeneralMemoryEntry[]>();
 
 /**
  * Clears and initialises the in-memory clone memory cache.
- * @returns Promise that resolves once the cache has been cleared.
  */
-export async function initialiseCloneMemory(): Promise<void> {
+export function initialiseCloneMemory(): void {
   cloneMemory.clear();
   logger.info("🗂️ Clone memory cache cleared");
 }
