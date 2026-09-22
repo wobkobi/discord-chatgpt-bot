@@ -19,9 +19,8 @@ export function trimMemory(
   entries: GeneralMemoryEntry[],
   maxChars: number = MAX_MEMORY_CHARS,
 ): GeneralMemoryEntry[] {
-  if (!entries.length) return [];
-
-  const newest = entries[entries.length - 1];
+  const newest = entries.at(-1);
+  if (!newest) return [];
   if (newest.content.length >= maxChars) {
     return [{ ...newest, content: newest.content.slice(0, maxChars) }];
   }
@@ -29,8 +28,9 @@ export function trimMemory(
   let total = 0;
   let start = entries.length;
   for (let i = entries.length - 1; i >= 0; i--) {
-    if (total + entries[i].content.length > maxChars) break;
-    total += entries[i].content.length;
+    const entry = entries[i];
+    if (!entry || total + entry.content.length > maxChars) break;
+    total += entry.content.length;
     start = i;
   }
   return entries.slice(start);

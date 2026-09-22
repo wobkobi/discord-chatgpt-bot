@@ -99,7 +99,9 @@ async function isLiveImage(url: string): Promise<boolean> {
     if (res.ok && contentType.startsWith("image")) return true;
     logger.warn(`[gif] Rejected ${url} status=${res.status} ct=${contentType}`);
   } catch (err: unknown) {
-    logger.warn(`[gif] HEAD check failed for ${url}: ${err instanceof Error ? err.message : err}`);
+    logger.warn(
+      `[gif] HEAD check failed for ${url}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   return false;
 }
@@ -260,7 +262,7 @@ export async function resolveGifPlaceholders(
 
   let result = text;
   for (const match of matches) {
-    const url = await searchGif(match[1].trim());
+    const url = await searchGif((match[1] ?? "").trim());
     if (url) {
       result = result.replace(match[0], url);
     } else if (stripUnresolved) {
@@ -284,7 +286,7 @@ export async function resolveGifPlaceholders(
 export async function resolveGifLinks(text: string, stripUnresolved: boolean): Promise<string> {
   if (!apiKey()) return text;
 
-  const matches = Array.from(text.matchAll(gifPageRe()), (m) => ({ full: m[0], slug: m[1] }));
+  const matches = Array.from(text.matchAll(gifPageRe()), (m) => ({ full: m[0], slug: m[1] ?? "" }));
   if (!matches.length) return text;
 
   const replacements = new Map<string, string | null>();

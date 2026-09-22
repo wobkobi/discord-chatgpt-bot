@@ -68,7 +68,7 @@ export function isBotReady(): boolean {
   return botReady;
 }
 
-(async () => {
+void (async () => {
   // Initialise environment variables
   initialiseEnv();
 
@@ -155,10 +155,10 @@ export function isBotReady(): boolean {
     logger.info(`🤖 Logged in as ${client.user!.tag}`);
 
     await registerGlobalCommands();
-    await initialiseUserMemory();
-    await initialiseCloneMemory();
+    initialiseUserMemory();
+    initialiseCloneMemory();
 
-    messageHandler = await handleNewMessage(openai, client);
+    messageHandler = handleNewMessage(openai, client);
     logger.info("🔄 Message handler initialised.");
 
     await run(client);
@@ -181,7 +181,7 @@ export function isBotReady(): boolean {
     if (!command) return;
 
     try {
-      await command.execute(interaction as ChatInputCommandInteraction);
+      await command.execute(interaction);
     } catch (err) {
       logger.error(`🛑 Error executing /${interaction.commandName}:`, err);
       const replyOptions = {
@@ -208,7 +208,7 @@ export function isBotReady(): boolean {
   });
   process.on("SIGINT", () => {
     logger.info("🛑 Shutting down...");
-    client.destroy();
+    void client.destroy();
     process.exit(0);
   });
 

@@ -5,7 +5,7 @@
 
 import { generateReply } from "@/services/replyService";
 import { updateUserMemory } from "@/store/userMemory";
-import type { Block, ChatMessage } from "@/types/index";
+import type { ChatMessage } from "@/types/index";
 import { replaceEmojiShortcodes } from "@/utils/discordHelpers";
 import { getRequired } from "@/utils/env";
 import logger from "@/utils/logger";
@@ -72,7 +72,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
   try {
     const { blocks, genericUrls } = await extractInputs(fakeMessage);
-    blocks.unshift({ type: "text", text: question } as Block);
+    blocks.unshift({ type: "text", text: question });
 
     const emoteNames = interaction.guild
       ? interaction.guild.emojis.cache.map((e) => e.name).filter((n): n is string => n !== null)

@@ -13,9 +13,8 @@ export const userMemory = new Map<string, GeneralMemoryEntry[]>();
 
 /**
  * Clears and initialises the in-memory user memory cache.
- * @returns Promise that resolves once the cache has been cleared.
  */
-export async function initialiseUserMemory(): Promise<void> {
+export function initialiseUserMemory(): void {
   userMemory.clear();
   logger.info("🗂️  User memory cache cleared");
 }

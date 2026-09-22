@@ -39,7 +39,8 @@ function isPrivateHost(hostname: string): boolean {
   }
   const octets = host.split(".").map(Number);
   if (octets.length === 4 && octets.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
-    const [a, b] = octets;
+    // The length check above guarantees four octets; the default only satisfies the type.
+    const [a, b = 0] = octets;
     return (
       a === 0 ||
       a === 10 ||

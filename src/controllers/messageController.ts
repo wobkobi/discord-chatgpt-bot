@@ -235,10 +235,10 @@ async function doReply(
  * @param client - The Discord client instance.
  * @returns A function to handle `messageCreate` events.
  */
-export async function handleNewMessage(
+export function handleNewMessage(
   openai: OpenAI,
   client: Client,
-): Promise<(message: Message) => Promise<void>> {
+): (message: Message) => Promise<void> {
   return async (message: Message): Promise<void> => {
     const chanId = message.channel.id;
     if (message.author.bot) {
@@ -263,7 +263,7 @@ export async function handleNewMessage(
 
     if (pendingInterjections.has(key)) {
       interjectionTimers.get(key)?.unref();
-      clearTimeout(interjectionTimers.get(key)!);
+      clearTimeout(interjectionTimers.get(key));
       const timer = setTimeout(async () => {
         pendingInterjections.delete(key);
         interjectionTimers.delete(key);

@@ -1,19 +1,19 @@
 {
   "name": "chatgpt",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node -e \"fs.rmSync('build',{recursive:true,force:true,maxRetries:10,retryDelay:200});fs.rmSync('tsconfig.tsbuildinfo',{force:true})\" && tsc && tsc-alias",
     "dev": "tsx watch src/index.ts",
     "format": "prettier --write \"**/*.{js,mjs,cjs,ts,md,json,yml,yaml}\"",
-    "lint": "eslint \"src/**/*.{js,ts}\" --fix",
+    "lint": "eslint --fix --cache \"src/**/*.{js,ts}\"",
     "prepare": "simple-git-hooks",
     "start": "npm run build && node build/index.js",
     "typecheck": "tsc --noEmit"
   },
   "simple-git-hooks": {
-    "pre-commit": "npm install --package-lock-only && git add package-lock.json package.json && npx lint-staged && npm run typecheck",
+    "pre-commit": "if ! find node_modules/.npm-update-stamp -mmin -1440 2>/dev/null | grep -q .; then npm update --package-lock-only --allow-remote=all --no-audit --no-fund && touch node_modules/.npm-update-stamp; fi && npm install --package-lock-only --allow-remote=all --no-audit --no-fund && git add package-lock.json package.json && npx lint-staged && npm run typecheck",
     "pre-push": "npm run lint && npm run build"
   },
   "lint-staged": {
@@ -30,14 +30,14 @@
   "dependencies": {
     "@discordjs/rest": "^2.6.3",
     "@giphy/js-fetch-api": "^5.8.0",
-    "discord-api-types": "^0.38.54",
+    "discord-api-types": "^0.38.55",
     "discord.js": "^14.27.0",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.2",
     "logform": "^2.7.0",
     "luxon": "^3.7.2",
     "mathjax-full": "^3.2.2",
     "node-fetch": "^3.3.2",
-    "openai": "^7.8.0",
+    "openai": "^7.20.0",
     "sanitize-html": "^2.17.7",
     "sharp": "^0.35.4",
     "winston": "^3.19.0",
@@ -46,22 +46,22 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/luxon": "^3.7.5",
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.6.2",
     "@types/sanitize-html": "^2.16.1",
-    "eslint": "^10.9.1",
+    "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-jsdoc": "^64.3.2",
+    "eslint-plugin-jsdoc": "^64.5.4",
     "eslint-plugin-prettier": "^5.5.6",
-    "globals": "^17.11.0",
-    "lint-staged": "^17.4.1",
-    "prettier": "^3.9.6",
+    "globals": "^17.12.0",
+    "lint-staged": "^17.5.1",
+    "prettier": "^3.9.8",
     "prettier-plugin-organize-imports": "^4.3.0",
     "prettier-plugin-packagejson": "^3.0.2",
     "simple-git-hooks": "^2.14.0",
-    "tsc-alias": "^1.9.2",
-    "tsx": "^4.23.13",
+    "tsc-alias": "^1.9.5",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.68.0"
+    "typescript-eslint": "^8.70.1"
   },
   "engines": {
     "node": "24.x",

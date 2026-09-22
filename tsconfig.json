@@ -1,3 +1,4 @@
+// tsconfig.json
 {
   "compilerOptions": {
     "target": "ESNext",
@@ -5,22 +6,19 @@
     "moduleResolution": "Bundler",
     "rootDir": "./src",
     "outDir": "./build",
-    "strict": true, // enables all strict-mode checks
-    "noImplicitAny": true, // catch untyped values
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
-    "strictPropertyInitialization": true,
-    "noImplicitThis": true,
-    "alwaysStrict": true,
-    "noUnusedLocals": true, // catch unused variables
-    "noUnusedParameters": true, // catch unused parameters
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "resolveJsonModule": true, // allow `import x from './config.json'`
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowJs": false,
     "sourceMap": true, // generate .map files for debugging
     "paths": {
       "@/*": ["./src/*"]
@@ -33,5 +31,5 @@
     "resolveFullPaths": true
   },
   "include": ["src"],
-  "exclude": ["build", "node_modules", "**/*.spec.ts"]
+  "exclude": ["build", "node_modules", "coverage", "**/*.spec.ts"]
 }

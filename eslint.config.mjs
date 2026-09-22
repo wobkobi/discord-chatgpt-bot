@@ -12,6 +12,39 @@ export default defineConfig([
   js.configs.recommended,
   ...tseslint.configs.recommended,
 
+  // Type-aware TS rules for app code
+  ...tseslint.configs.recommendedTypeChecked.map((c) => ({
+    ...c,
+    files: ["src/**/*.ts"],
+  })),
+  {
+    files: ["src/**/*.ts"],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      // The no-unsafe-* family fires on any-typed values flowing out of external
+      // SDKs and JSON parsing. Off until those boundaries get typed; the
+      // async-correctness rules (no-floating-promises etc.) stay on.
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-argument": "off",
+      "@typescript-eslint/no-unsafe-return": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
+      // Async callbacks passed to client.on() and setTimeout() are the bot's
+      // event model; each one catches its own errors, and the process-level
+      // unhandledRejection handler logs anything that slips through. Keep the
+      // other misused-promise checks (conditionals, spreads) on.
+      "@typescript-eslint/no-misused-promises": [
+        "error",
+        { checksVoidReturn: { arguments: false } },
+      ],
+    },
+  },
+
   // JSDoc baseline (flat config variant, tuned for TS)
   jsdoc.configs["flat/recommended-typescript-error"],
 
@@ -27,6 +60,9 @@ export default defineConfig([
       jsdoc: { mode: "typescript" },
     },
     rules: {
+      // Core hygiene: require === except the idiomatic `!= null` check
+      eqeqeq: ["error", "smart"],
+
       // TS hygiene
       "@typescript-eslint/no-unused-vars": "error",
       "@typescript-eslint/consistent-type-definitions": "error",

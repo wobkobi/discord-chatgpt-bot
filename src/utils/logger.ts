@@ -30,7 +30,7 @@ if (!fs.existsSync(LOGS_ERROR_DIR)) {
  */
 const logFormat = printf((info: TransformableInfo) => {
   const bell = info.level === "error" ? "\u0007" : "";
-  const base = `[${info.timestamp}] [${info.level.toUpperCase()}]: ${info.stack || info.message}`;
+  const base = `[${String(info.timestamp)}] [${info.level.toUpperCase()}]: ${String(info.stack || info.message)}`;
   return bell + base;
 });
 
