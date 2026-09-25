@@ -33,7 +33,7 @@
     "@giphy/js-fetch-api": "^5.8.0",
     "discord-api-types": "^0.38.55",
     "discord.js": "^14.27.0",
-    "dotenv": "^18.0.2",
+    "dotenv": "^18.0.3",
     "logform": "^2.7.0",
     "luxon": "^3.7.2",
     "mathjax-full": "^3.2.2",
