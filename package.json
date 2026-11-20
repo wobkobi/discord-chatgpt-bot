@@ -1,6 +1,6 @@
 {
   "name": "chatgpt",
-  "version": "2.3.2",
+  "version": "2.4.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,6 +11,10 @@
     "prepare": "simple-git-hooks",
     "start": "npm run build && node build/index.js",
     "typecheck": "tsc --noEmit"
+  },
+  "allowScripts": {
+    "esbuild": false,
+    "simple-git-hooks": true
   },
   "simple-git-hooks": {
     "pre-commit": "if ! find node_modules/.npm-update-stamp -mmin -1440 2>/dev/null | grep -q .; then npm update --package-lock-only --allow-remote=all --no-audit --no-fund && touch node_modules/.npm-update-stamp; fi && npm install --package-lock-only --allow-remote=all --no-audit --no-fund && git add package-lock.json package.json && npx lint-staged && npm run typecheck",
@@ -31,15 +35,15 @@
   "dependencies": {
     "@discordjs/rest": "^2.6.3",
     "@giphy/js-fetch-api": "^5.8.0",
-    "discord-api-types": "^0.38.56",
-    "discord.js": "^14.27.0",
-    "dotenv": "^18.0.7",
+    "discord-api-types": "^0.38.60",
+    "discord.js": "^14.28.1",
+    "dotenv": "^18.0.10",
     "logform": "^2.7.0",
     "luxon": "^3.7.2",
     "mathjax-full": "^3.2.2",
     "node-fetch": "^3.3.2",
-    "openai": "^7.32.0",
-    "sanitize-html": "^2.18.0",
+    "openai": "^7.62.0",
+    "sanitize-html": "^2.18.2",
     "sharp": "^0.35.5",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0"
@@ -47,29 +51,25 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/luxon": "^3.7.6",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.6",
     "@types/sanitize-html": "^2.16.2",
-    "eslint": "^10.12.0",
+    "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-jsdoc": "^64.5.4",
-    "eslint-plugin-prettier": "^5.5.6",
-    "globals": "^17.13.0",
-    "lint-staged": "^17.6.0",
-    "prettier": "^3.9.9",
+    "eslint-plugin-jsdoc": "^65.5.0",
+    "eslint-plugin-prettier": "^5.5.7",
+    "globals": "^17.14.0",
+    "lint-staged": "^17.6.1",
+    "prettier": "^3.10.1",
     "prettier-plugin-organize-imports": "^4.3.0",
-    "prettier-plugin-packagejson": "^3.0.2",
+    "prettier-plugin-packagejson": "^3.1.0",
     "simple-git-hooks": "^2.14.0",
-    "tsc-alias": "^1.9.7",
+    "tsc-alias": "^1.9.10",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.71.1"
+    "typescript-eslint": "^8.73.0"
   },
   "engines": {
     "node": "24.x",
     "npm": ">=10.0.0"
-  },
-  "allowScripts": {
-    "esbuild": false,
-    "simple-git-hooks": true
   }
 }
