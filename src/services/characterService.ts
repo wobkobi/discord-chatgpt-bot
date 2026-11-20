@@ -1,48 +1,82 @@
 // src/services/characterService.ts
-/**
- * @description Loads persona configuration and builds system prompts and metadata for the AI.
- */
+// Loads persona configuration and builds system prompts and metadata for the AI.
 
+import { DATA_DIR } from "@/config/paths";
 import { userMemory } from "@/store/userMemory";
 import { PersonaConfig } from "@/types/persona";
+import { getOptional } from "@/utils/env";
 import logger from "@/utils/logger";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { DateTime } from "luxon";
-import { createRequire } from "module";
 import path from "path";
 
-const require = createRequire(import.meta.url);
+/** Repo-local config folder, kept as a fallback so a plain checkout still runs. */
+const SRC_CONFIG_DIR = path.resolve(process.cwd(), "src/config");
 
-let persona: PersonaConfig;
-try {
-  persona = require(path.resolve(process.cwd(), "src/config/persona.json")) as PersonaConfig;
-} catch (err: unknown) {
-  if ((err as NodeJS.ErrnoException).code === "MODULE_NOT_FOUND") {
-    logger.warn("[characterService] persona.json not found; continuing with defaults.");
-    persona = { cloneUserId: "", baseDescription: "" };
-  } else {
-    logger.error("[characterService] Failed to load persona config:", err);
+/**
+ * Finds the persona file. PERSONA_FILE wins when set, then data/persona.json, then the
+ * repo-local src/config/persona.json. Each bot is the same image with its own data/
+ * mount, so data/ is where a per-bot persona belongs.
+ * @returns Absolute path of the persona file to load, or null if none exists.
+ * @throws {Error} If PERSONA_FILE is set but points at a missing file, since a typo
+ *   there would otherwise silently start the bot with an empty persona.
+ */
+function resolvePersonaFile(): string | null {
+  const explicit = getOptional("PERSONA_FILE");
+  if (explicit) {
+    const resolved = path.resolve(explicit);
+    if (!existsSync(resolved)) {
+      throw new Error(`PERSONA_FILE is set to ${resolved}, but that file does not exist`);
+    }
+    return resolved;
+  }
+  const candidates = [
+    path.join(DATA_DIR, "persona.json"),
+    path.join(SRC_CONFIG_DIR, "persona.json"),
+  ];
+  return candidates.find((p) => existsSync(p)) ?? null;
+}
+
+/**
+ * Loads the persona config, falling back to an empty persona when no file exists.
+ * @returns The parsed persona config.
+ */
+function loadPersona(): PersonaConfig {
+  const file = resolvePersonaFile();
+  if (!file) {
+    logger.warn("[characterService] No persona.json found; continuing with defaults.");
+    return { cloneUserId: "", baseDescription: "" };
+  }
+  try {
+    const persona = JSON.parse(readFileSync(file, "utf-8")) as PersonaConfig;
+    logger.info(`[characterService] Persona loaded from ${file}`);
+    return persona;
+  } catch (err: unknown) {
+    logger.error(`[characterService] Failed to load persona config from ${file}:`, err);
     throw err;
   }
 }
 
+const persona = loadPersona();
+
 /**
- * Loads the Discord markdown formatting guide from disk.
+ * Loads the Discord markdown formatting guide from disk: data/markdownGuide.md first, then
+ * src/config/markdownGuide.md, then the committed example.
  * @returns The guide content, or an empty string if no file is found.
  */
 function loadMarkdownGuide(): string {
-  const custom = path.resolve(process.cwd(), "src/config/markdownGuide.md");
-  const example = path.resolve(process.cwd(), "src/config/markdownGuide.example.md");
+  const candidates = [
+    path.join(DATA_DIR, "markdownGuide.md"),
+    path.join(SRC_CONFIG_DIR, "markdownGuide.md"),
+  ];
+  const custom = candidates.find((p) => existsSync(p));
+  if (custom) return readFileSync(custom, "utf-8");
   try {
-    return readFileSync(custom, "utf-8");
+    logger.warn("[characterService] markdownGuide.md not found; falling back to example.");
+    return readFileSync(path.join(SRC_CONFIG_DIR, "markdownGuide.example.md"), "utf-8");
   } catch {
-    try {
-      logger.warn("[characterService] markdownGuide.md not found; falling back to example.");
-      return readFileSync(example, "utf-8");
-    } catch {
-      logger.warn("[characterService] No markdownGuide found; formatting guide disabled.");
-      return "";
-    }
+    logger.warn("[characterService] No markdownGuide found; formatting guide disabled.");
+    return "";
   }
 }
 

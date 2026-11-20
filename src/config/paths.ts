@@ -1,7 +1,7 @@
 // src/config/paths.ts
-/**
- * @description Centralised definitions of all filesystem paths used by the bot.
- */
+// Filesystem paths used by the bot. Everything hangs off the working directory, which is
+// /app in the Docker image, so data/ and logs/ land at /app/data and /app/logs there and
+// each can be bind-mounted on its own.
 
 import { join } from "path";
 

@@ -1,17 +1,13 @@
 // src/index.ts
-/**
- * @description Entry point for initialising and running the Discord bot, including command loading,
- * registration, event handling, and AI integration.
- *
- * Dynamically discovers and registers slash commands, initialises memory stores,
- * loads per-guild configurations, sets up message and interaction handlers, and manages graceful shutdown.
- */
+// Entry point: discovers and registers slash commands, initialises memory stores, loads
+// per-guild configurations, sets up message and interaction handlers, and manages
+// graceful shutdown.
 
 import { loadGuildConfigs } from "@/config/index";
 import { handleNewMessage, run } from "@/controllers/messageController";
 import { initialiseCloneMemory } from "@/store/cloneMemory";
 import { initialiseUserMemory } from "@/store/userMemory";
-import { getRequired, initialiseEnv } from "@/utils/env";
+import { getOptional, getRequired, initialiseEnv } from "@/utils/env";
 import logger from "@/utils/logger";
 import { REST } from "@discordjs/rest";
 import { Routes } from "discord-api-types/v10";
@@ -71,6 +67,11 @@ export function isBotReady(): boolean {
 void (async () => {
   // Initialise environment variables
   initialiseEnv();
+
+  // The image bakes in GIT_SHA, so a restart that kept the old image can be told apart
+  // from one that pulled a new build. Unset when running from a plain checkout.
+  const gitSha = getOptional("GIT_SHA");
+  logger.info(`🏷️ Build: ${gitSha ? gitSha.slice(0, 12) : "local (no GIT_SHA)"}`);
 
   // Load per-guild configurations (cooldown + interjectionRate)
   try {
@@ -198,7 +199,8 @@ void (async () => {
 
   /**
    * Handle unhandled promise rejections and uncaught exceptions,
-   * and perform graceful shutdown on SIGINT.
+   * and perform graceful shutdown on SIGINT or SIGTERM. `docker stop` sends SIGTERM, and
+   * as PID 1 with no handler Node would ignore it until Docker kills it after 10 seconds.
    */
   process.on("unhandledRejection", (reason) => {
     logger.error("Unhandled promise rejection:", reason);
@@ -206,11 +208,13 @@ void (async () => {
   process.on("uncaughtException", (err) => {
     logger.error("Uncaught exception:", err);
   });
-  process.on("SIGINT", () => {
-    logger.info("🛑 Shutting down...");
-    void client.destroy();
-    process.exit(0);
-  });
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.on(signal, () => {
+      logger.info(`🛑 ${signal} received, shutting down...`);
+      void client.destroy();
+      process.exit(0);
+    });
+  }
 
   // Start the bot by logging in
   client

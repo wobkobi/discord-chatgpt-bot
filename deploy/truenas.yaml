@@ -1,0 +1,68 @@
+# TrueNAS SCALE 24.10+ (Electric Eel and later, which run Docker rather than
+# k3s). Paste into Apps > Discover Apps > the three-dot menu > Install via YAML.
+#
+# It pulls a published image because the Apps UI cannot build one, and its
+# paths are absolute because it has no build context.
+#
+# One image, one app per bot. Install this YAML once per bot, replacing POOL
+# and BOT each time, and give each app its own name:
+#
+#   app "lisa40"      BOT=lisa40      /mnt/POOL/apps/lisa40/{.env,data,logs}
+#   app "shayna-bot"  BOT=shayna-bot  /mnt/POOL/apps/shayna-bot/{.env,data,logs}
+#
+# Each bot has its own .env (token, keys, model settings), its own data/
+# (memory, conversations, guild config, persona.json) and its own logs/, so
+# nothing is shared between them except the image.
+#
+# Create the dataset with the Apps preset or a POSIX ACL: on an SMB-style
+# dataset the NFSv4 ACL overrides the ownership and the bot cannot write its
+# own data. 568 is the apps user.
+#
+# From the TrueNAS shell first, for each bot:
+#
+#   mkdir -p /mnt/POOL/apps/BOT/data /mnt/POOL/apps/BOT/logs
+#
+#   # Moving from the git-pull setup: copy the existing data/ across so the
+#   # bot keeps its memory and guild config.
+#   cp -a /path/to/old/checkout/data/. /mnt/POOL/apps/BOT/data/
+#
+#   # The persona is per-bot and not in the image. Put it in data/ (for
+#   # shayna-bot, that is the old src/config/Chad.json renamed), or point
+#   # PERSONA_FILE in the .env at another path inside the container.
+#   cp /path/to/old/checkout/src/config/persona.json /mnt/POOL/apps/BOT/data/persona.json
+#
+#   vi /mnt/POOL/apps/BOT/.env        # BOT_TOKEN, CLIENT_ID, OPENAI_API_KEY, ...
+#   chmod 600 /mnt/POOL/apps/BOT/.env
+#   chown -R 568:568 /mnt/POOL/apps/BOT
+#
+# Updating: restart the app. pull_policy below fetches the newest :latest, and
+# the "Build:" line in the boot log names the commit it was built from.
+
+services:
+  bot:
+    image: ghcr.io/wobkobi/chatgpt-x-discord:latest
+    restart: unless-stopped
+
+    # A tag is not a subscription: without this, restarting the app reuses the
+    # image already on disk and the container comes back on the same code it
+    # was already running. Pulling on every start makes "restart it" the update.
+    pull_policy: always
+
+    # Runs as the apps user rather than the image's built-in uid 1000, so the
+    # files it writes stay readable and editable from the TrueNAS side.
+    user: "568:568"
+
+    # Kept out of the app config so the token is not stored in the Apps UI.
+    env_file: /mnt/POOL/apps/BOT/.env
+
+    volumes:
+      - /mnt/POOL/apps/BOT/data:/app/data
+      - /mnt/POOL/apps/BOT/logs:/app/logs
+
+    # The bot also writes rotated logs to logs/, so the Docker copy only needs
+    # to cover what the Apps UI log viewer shows.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

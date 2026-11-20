@@ -1,0 +1,28 @@
+# Build context: keep it to what the image actually needs. node_modules is
+# reinstalled inside the image for the target platform anyway.
+node_modules
+build
+.git
+.github
+.vscode
+.claude
+.trunk
+.venv
+fine tuning
+*.tsbuildinfo
+.eslintcache
+npm-debug.log*
+
+# Secrets never belong in an image layer; pass them with --env-file or env_file.
+.env
+.env.*
+!.env.example
+
+# Runtime state lives in bind mounts, not the image.
+data/
+logs/
+
+# Per-bot config is read from data/ in the container, so local copies stay out.
+src/config/*.json
+!src/config/persona.example.json
+src/config/markdownGuide.md
