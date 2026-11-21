@@ -1,29 +1,35 @@
 // src/commands/stop.ts
-/**
- * @description Slash command to safely shut down the bot; restricted to the owner only.
- */
+// Slash command to safely shut down the bot; restricted to the owner only.
 
+import { flushConversations } from "@/controllers/messageController";
 import { getRequired } from "@/utils/env";
 import logger from "@/utils/logger";
 import { ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from "discord.js";
 
+let OWNER_ID = "";
+try {
+  OWNER_ID = getRequired("OWNER_ID");
+} catch (err) {
+  logger.warn("[stop] OWNER_ID not configured; /stop will refuse every caller.", err);
+}
+
 /**
- * Slash command registration data for /stop.
+ * Slash command registration data for /stop. Hidden from non-administrators by default;
+ * the owner check in {@link execute} is still the real gate.
  */
 export const data = new SlashCommandBuilder()
   .setName("stop")
-  .setDescription("Safely stop the bot (Owner only)");
+  .setDescription("Safely stop the bot (Owner only)")
+  .setDefaultMemberPermissions(0);
 
 /**
- * Executes the /stop command. Validates ownership, acknowledges shutdown,
- * then destroys the Discord client and exits the process after a short delay.
+ * Executes the /stop command. Validates ownership, acknowledges shutdown, then flushes
+ * pending conversation saves, destroys the Discord client and exits after a short delay.
  * @param interaction - The ChatInputCommandInteraction context for this command.
  * @returns A promise that resolves once the shutdown sequence is initiated.
  */
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-  const ownerId = getRequired("OWNER_ID");
-
-  if (!ownerId) {
+  if (!OWNER_ID) {
     await interaction.reply({
       content: "⚠️ Bot owner is not configured.",
       flags: MessageFlags.Ephemeral,
@@ -31,7 +37,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     return;
   }
 
-  if (interaction.user.id !== ownerId) {
+  if (interaction.user.id !== OWNER_ID) {
     await interaction.reply({
       content: "🚫 You are not allowed to shut me down.",
       flags: MessageFlags.Ephemeral,
@@ -39,10 +45,15 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     return;
   }
 
-  logger.info(`[stop] Authorized shutdown by ownerId=${ownerId}`);
+  logger.info(`[stop] Authorised shutdown by ownerId=${OWNER_ID}`);
   await interaction.reply({ content: "🛑 Shutting down. Goodbye!", flags: MessageFlags.Ephemeral });
 
   setTimeout(async () => {
+    try {
+      await flushConversations();
+    } catch (err) {
+      logger.error("[stop] Failed to flush conversations:", err);
+    }
     try {
       await interaction.client.destroy();
       logger.info("[stop] Discord client destroyed, exiting process.");

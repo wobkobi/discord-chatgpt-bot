@@ -1,7 +1,5 @@
 // src/store/userMemory.ts
-/**
- * @description Manages long-term memory entries for regular users, stored in-memory and persisted to disk.
- */
+// Manages long-term memory entries for regular users, stored in memory and persisted to disk.
 
 import { GeneralMemoryEntry } from "@/types/memory";
 import { loadUserMemory, saveUserMemory } from "@/utils/fileUtils";

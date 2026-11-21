@@ -1,7 +1,7 @@
 // src/utils/trimMemory.ts
 import { GeneralMemoryEntry } from "@/types/memory";
 
-/** Maximum total characters we keep per-user */
+/** Maximum total characters of memory kept per user. */
 export const MAX_MEMORY_CHARS = 4_000;
 
 /**
@@ -13,7 +13,7 @@ export const MAX_MEMORY_CHARS = 4_000;
  * first time a single long reply came through.
  * @param entries - Memory entries in chronological (oldest-first) order.
  * @param maxChars - Hard cap for the combined `content.length`; defaults to {@link MAX_MEMORY_CHARS}.
- * @returns A new array containing the most recent entries whose total size ≤ `maxChars`.
+ * @returns A new array containing the most recent entries whose total size is at most `maxChars`.
  */
 export function trimMemory(
   entries: GeneralMemoryEntry[],

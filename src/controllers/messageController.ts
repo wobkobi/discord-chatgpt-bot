@@ -1,15 +1,13 @@
 // src/controllers/messageController.ts
-/**
- * @description Manages incoming Discord messages: applies rate-limits, tracks conversation threads,
- *   updates long-term memory, triggers AI reply generation, and persists chat state.
- */
+// Manages incoming Discord messages: applies rate limits, tracks conversation threads,
+// updates long-term memory, triggers AI reply generation, and persists chat state.
 
-import { isBotReady } from "@/index";
 import { cloneUserId } from "@/services/characterService";
 import { generateReply } from "@/services/replyService";
 import { updateCloneMemory } from "@/store/cloneMemory";
 import { updateUserMemory } from "@/store/userMemory";
 import { ConversationContext } from "@/types/chat";
+import { isBotReady } from "@/utils/botState";
 import {
   createChatMessage,
   replaceEmojiShortcodes,
@@ -37,9 +35,14 @@ const THREAD_LIMIT = 100;
 const histories = new Map<string, Map<string, ConversationContext>>();
 const idMaps = new Map<string, Map<string, string>>();
 
+/** In-flight loads per context key, so two quick messages share one disk read. */
+const pendingLoads = new Map<string, Promise<void>>();
+
 /**
  * Drop the oldest threads (Map insertion order) and their message-ID mappings once a
  * context exceeds {@link THREAD_LIMIT}, keeping long-running instances memory-bounded.
+ * Dropped thread IDs are collected first so the ID map is swept once, not once per thread,
+ * which matters when a large saved file is trimmed on load.
  * @param convMap - Thread map for one context.
  * @param convIds - Message-ID to thread-ID map for the same context.
  */
@@ -47,14 +50,35 @@ function pruneThreads(
   convMap: Map<string, ConversationContext>,
   convIds: Map<string, string>,
 ): void {
-  while (convMap.size > THREAD_LIMIT) {
-    const oldest = convMap.keys().next().value;
-    if (!oldest) return;
-    convMap.delete(oldest);
-    for (const [msgId, threadId] of convIds) {
-      if (threadId === oldest) convIds.delete(msgId);
-    }
+  if (convMap.size <= THREAD_LIMIT) return;
+  const dropped = new Set<string>();
+  for (const threadId of convMap.keys()) {
+    if (convMap.size <= THREAD_LIMIT) break;
+    convMap.delete(threadId);
+    dropped.add(threadId);
   }
+  for (const [msgId, threadId] of convIds) {
+    if (dropped.has(threadId)) convIds.delete(msgId);
+  }
+}
+
+/**
+ * Make sure a context's saved threads are in memory before it is used. Without this, a
+ * context that was not preloaded (any DM) would start empty and the next save would
+ * overwrite its file. Concurrent callers for the same key await the same load.
+ * @param contextKey - Guild ID, or user ID for a DM.
+ * @returns Promise that resolves once the context is present in memory.
+ */
+async function ensureContextLoaded(contextKey: string): Promise<void> {
+  if (histories.has(contextKey)) return;
+  let pending = pendingLoads.get(contextKey);
+  if (!pending) {
+    pending = loadConversations(contextKey, histories, idMaps)
+      .then(() => pruneThreads(histories.get(contextKey)!, idMaps.get(contextKey)!))
+      .finally(() => pendingLoads.delete(contextKey));
+    pendingLoads.set(contextKey, pending);
+  }
+  await pending;
 }
 
 const LOCALE = Intl.DateTimeFormat().resolvedOptions().locale;
@@ -71,6 +95,17 @@ function scheduleSave(): void {
       logger.error("[messageController] Failed to save conversations:", err),
     );
   }, 5000);
+}
+
+/**
+ * Cancel any pending debounced save and write all conversations now. Called on shutdown
+ * so the last few seconds of replies are not lost to the debounce window.
+ * @returns Promise that resolves once every context has been written.
+ */
+export async function flushConversations(): Promise<void> {
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  await saveConversations(histories);
 }
 
 const pendingInterjections = new Map<string, boolean>();
@@ -110,6 +145,8 @@ async function doReply(
   const { useCooldown, cooldownTime } = getCooldownConfig(guildId);
   const cdKey = getCooldownContext(guildId, userId);
   if (useCooldown && isCooldownActive(cdKey)) {
+    // An interjection was never asked for, so a cooldown warning would be noise
+    if (interject) return;
     const warn = await message.reply(`⏳ Cooldown: ${cooldownTime.toFixed(2)}s`);
     setTimeout(() => warn.delete().catch(() => {}), cooldownTime * 1000);
     return;
@@ -117,10 +154,7 @@ async function doReply(
   if (useCooldown) manageCooldown(guildId, userId);
 
   const contextKey = guildId ?? userId;
-  if (!histories.has(contextKey)) {
-    histories.set(contextKey, new Map());
-    idMaps.set(contextKey, new Map());
-  }
+  await ensureContextLoaded(contextKey);
 
   const convIds = idMaps.get(contextKey)!;
   const replyToId = message.reference?.messageId;
@@ -241,6 +275,8 @@ export function handleNewMessage(
 ): (message: Message) => Promise<void> {
   return async (message: Message): Promise<void> => {
     const chanId = message.channel.id;
+    // Bot messages (this bot's own replies included) reset the interjection counter, then
+    // stop here before any reply logic.
     if (message.author.bot) {
       messagesSinceBot.set(chanId, 0);
     } else {
@@ -262,7 +298,6 @@ export function handleNewMessage(
     }
 
     if (pendingInterjections.has(key)) {
-      interjectionTimers.get(key)?.unref();
       clearTimeout(interjectionTimers.get(key));
       const timer = setTimeout(async () => {
         pendingInterjections.delete(key);
@@ -306,6 +341,6 @@ export function handleNewMessage(
  */
 export async function run(client: Client): Promise<void> {
   const guildIds = Array.from(client.guilds.cache.keys());
-  await Promise.all(guildIds.map((g) => loadConversations(g, histories, idMaps)));
+  await Promise.all(guildIds.map((g) => ensureContextLoaded(g)));
   logger.info("✅ Preload complete");
 }

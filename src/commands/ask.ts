@@ -1,13 +1,11 @@
 // src/commands/ask.ts
-/**
- * @description Slash command to privately ask the AI assistant a question.
- */
+// Slash command to privately ask the AI assistant a question.
 
+import { getOpenAIClient } from "@/services/openaiClient";
 import { generateReply } from "@/services/replyService";
 import { updateUserMemory } from "@/store/userMemory";
 import type { ChatMessage } from "@/types/index";
 import { replaceEmojiShortcodes } from "@/utils/discordHelpers";
-import { getRequired } from "@/utils/env";
 import logger from "@/utils/logger";
 import {
   getCooldownConfig,
@@ -23,9 +21,6 @@ import {
   MessageFlags,
   SlashCommandBuilder,
 } from "discord.js";
-import OpenAI from "openai";
-
-const openai = new OpenAI({ apiKey: getRequired("OPENAI_API_KEY") });
 
 /**
  * Slash command definition for /ask.
@@ -81,7 +76,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     const { text, mathBuffers } = await generateReply(
       convoHistory,
       messageId,
-      openai,
+      getOpenAIClient(),
       userId,
       undefined,
       blocks,

@@ -1,8 +1,6 @@
 // src/commands/setinterjection.ts
-/**
- * @description Slash command to configure how often the bot randomly interjects when not mentioned.
- *   Restricted to the bot owner or server administrators. Stores a "1 in N" chance (minimum N=50).
- */
+// Slash command to configure how often the bot randomly interjects when not mentioned.
+// Restricted to the bot owner or server administrators. Stores a "1 in N" chance (minimum N=50).
 
 import {
   defaultCooldownConfig,
@@ -15,6 +13,7 @@ import logger from "@/utils/logger";
 import {
   ChatInputCommandInteraction,
   InteractionContextType,
+  MessageFlags,
   PermissionsBitField,
   SlashCommandBuilder,
 } from "discord.js";
@@ -52,7 +51,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   if (!OWNER_ID) {
     await interaction.reply({
       content: "⚠️ Bot owner is not configured. Cannot change interjection rate.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -63,7 +62,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     await interaction.reply({
       content:
         "🚫 You must be a server admin or the bot owner to configure interjection frequency.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -72,7 +71,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   if (!guildId) {
     await interaction.reply({
       content: "❌ This command can only be used in a server.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -81,7 +80,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   if (rate < 50) {
     await interaction.reply({
       content: "❌ Rate must be at least 50 (i.e. a 1 in 50 chance).",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -98,6 +97,6 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
   await interaction.reply({
     content: `✅ Random interjection frequency set to **1 in ${rate}**.`,
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 }

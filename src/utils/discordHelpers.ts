@@ -1,9 +1,7 @@
 // src/utils/discordHelpers.ts
-/**
- * @description Utilities for normalising Discord messages: fixing mentions, formatting markdown and maths,
- *   substituting emoji shortcodes, constructing chat message objects, summarising conversations,
- *   and stripping URL queries.
- */
+// Utilities for normalising Discord messages: fixing mentions, formatting markdown and maths,
+// substituting emoji shortcodes, constructing chat message objects, summarising conversations,
+// and stripping URL queries.
 
 import { ChatMessage, ConversationContext } from "@/types/chat";
 import logger from "@/utils/logger";

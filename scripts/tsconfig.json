@@ -1,0 +1,13 @@
+// scripts/tsconfig.json
+// Type-checking context for the tsx scripts. They sit outside the app's `include`, so
+// this config covers them alongside src (for the "@/" alias, inherited from the root).
+// noEmit + rootDir are set because the root config emits with rootDir ./src; these
+// scripts only ever run through tsx and are never compiled.
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true
+  },
+  "include": ["**/*.ts", "../src/**/*.ts"]
+}
