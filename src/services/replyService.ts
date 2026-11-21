@@ -1,9 +1,7 @@
 // src/services/replyService.ts
-/**
- * @description Assembles the AI prompt from conversation history and multimodal blocks,
- *   invokes OpenAI for chat completion, renders LaTeX maths to PNG buffers, and returns
- *   the cleaned reply text alongside any generated maths images.
- */
+// Assembles the AI prompt from conversation history and multimodal blocks, invokes OpenAI
+// for chat completion, renders LaTeX maths to PNG buffers, and returns the cleaned reply
+// text alongside any generated maths images.
 
 import {
   cloneUserId,
@@ -21,7 +19,7 @@ import { loadUserMemory } from "@/utils/fileUtils";
 import { hasUnresolvedGif, resolveGifLinks, resolveGifPlaceholders } from "@/utils/gifResolver";
 import { renderMathToPng } from "@/utils/latexRenderer";
 import logger from "@/utils/logger";
-import OpenAI, { APIError } from "openai";
+import OpenAI from "openai";
 import { ChatCompletionMessageParam } from "openai/resources/chat";
 
 const MAX_MEMORY_ENTRIES = parseInt(getOptional("MAX_MEMORY_ENTRIES") || "50", 10);
@@ -41,7 +39,7 @@ const MAX_EMOTE_ROSTER = 200;
 
 /**
  * Strip bot/user mentions and custom emotes from text, keeping only names.
- * @param text - Raw user or system text to sanitize.
+ * @param text - Raw user or system text to sanitise.
  * @returns Cleaned text with mentions removed.
  */
 function sanitiseInput(text: string): string {
@@ -94,7 +92,7 @@ interface ApiFailure {
  * @param err - Value thrown by the OpenAI client.
  * @returns Status, code, type and message, zeroed or blank where absent.
  */
-function toApiFailure(err: unknown): ApiFailure {
+export function toApiFailure(err: unknown): ApiFailure {
   if (typeof err !== "object" || err === null) {
     return { status: 0, code: "", type: "", message: String(err) };
   }
@@ -117,7 +115,7 @@ function toApiFailure(err: unknown): ApiFailure {
  * near the bottom because they are identified by a missing status rather than a code, so
  * anything carrying a real HTTP status should have been claimed already.
  */
-const KNOWN_FAILURES: ReadonlyArray<{
+export const KNOWN_FAILURES: ReadonlyArray<{
   reason: string;
   test: (failure: ApiFailure) => boolean;
   text: string;
@@ -194,10 +192,25 @@ const KNOWN_FAILURES: ReadonlyArray<{
 ];
 
 /**
+ * Matches LaTeX in a reply: fenced blocks explicitly tagged `latex` or `tex`, `\[...\]`,
+ * `\(...\)` and `$$...$$`. Capture groups 1-4 map to those forms in that order.
+ *
+ * Untagged fences (and ```js etc.) are deliberately excluded: the markdown guide tells the
+ * model to write code in fenced blocks, and treating every fence as maths would strip the
+ * code from the reply and feed it to the renderer.
+ *
+ * The regex is global, so use it only with `.replace` and `.matchAll`, which reset
+ * `lastIndex` and are safe to share. Never call `.test` or `.exec` on it, as they carry
+ * `lastIndex` state between calls.
+ */
+export const FORMULA_RE =
+  /```(?:latex|tex)\s+([\s\S]+?)\s*```|\\\[(.+?)\\\]|\\\((.+?)\\\)|\$\$([\s\S]+?)\$\$/gs;
+
+/**
  * Generate an AI reply given the conversation context and extracted inputs.
  * @param convoHistory - Map of message IDs to ChatMessage for the current thread.
  * @param currentId - Discord message ID of the latest user message.
- * @param openai - Initialized OpenAI client instance.
+ * @param openai - Initialised OpenAI client instance.
  * @param userId - Discord user ID (used for persona and memory selection).
  * @param channelHistory - Optional recent channel messages string (timestamped).
  * @param blocks - Pre-extracted multimodal blocks (text, images, files).
@@ -226,7 +239,8 @@ export async function generateReply(
   const useFT = getOptional("USE_FINE_TUNED_MODEL") === "true";
   const usePersona = getOptional("USE_PERSONA") === "true";
   const ftVision = getOptional("FINE_TUNED_SUPPORTS_VISION") === "true";
-  const modelName = useFT ? getRequired("FINE_TUNED_MODEL_NAME") : "gpt-4o";
+  const baseModel = getOptional("OPENAI_MODEL", "gpt-4o");
+  const modelName = useFT ? getRequired("FINE_TUNED_MODEL_NAME") : baseModel;
 
   const messages: Array<ChatCompletionMessageParam | ChatCompletionBlockMessage> = [];
 
@@ -297,7 +311,7 @@ export async function generateReply(
     messages.push({ role, content } as ChatCompletionMessageParam);
   }
 
-  // Current turn: multimodal for gpt-4o, text-only for fine-tuned models which may lack vision
+  // Current turn: multimodal for the base model, text-only for fine-tuned models which may lack vision
   const currentText = currentTurn
     ? sanitiseInput(applyDiscordMarkdownFormatting(currentTurn.content))
     : "";
@@ -327,9 +341,6 @@ export async function generateReply(
       user: userId,
     });
 
-  const formulaRegex =
-    /```(?:latex)?\s*([\s\S]+?)\s*```|\\\[(.+?)\\\]|\\\((.+?)\\\)|\$\$([\s\S]+?)\$\$/gs;
-
   let replyText = "";
   let mathBuffers: Buffer[] = [];
 
@@ -348,11 +359,11 @@ export async function generateReply(
       } catch (err: unknown) {
         // Retry once on the base model - recursing into generateReply re-selects the
         // same missing fine-tuned model from env and loops forever
-        if (useFT && err instanceof APIError && err.code === "model_not_found") {
+        if (useFT && toApiFailure(err).code === "model_not_found") {
           logger.error(
-            `[replyService] Fine-tuned model not found: ${modelName} - falling back to gpt-4o`,
+            `[replyService] Fine-tuned model not found: ${modelName} - falling back to ${baseModel}`,
           );
-          res = await requestCompletion("gpt-4o");
+          res = await requestCompletion(baseModel);
         } else {
           throw err;
         }
@@ -377,7 +388,7 @@ export async function generateReply(
     }
 
     const buffers: Buffer[] = [];
-    for (const match of contentText.matchAll(formulaRegex)) {
+    for (const match of contentText.matchAll(FORMULA_RE)) {
       const tex = (match[1] || match[2] || match[3] || match[4] || "").trim();
       try {
         const { buffer } = await renderMathToPng(tex);
@@ -388,7 +399,7 @@ export async function generateReply(
     }
 
     let text = contentText
-      .replace(formulaRegex, "")
+      .replace(FORMULA_RE, "")
       .replace(/(\r?\n){2,}/g, "\n")
       .trim();
 

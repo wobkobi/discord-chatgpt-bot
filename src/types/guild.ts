@@ -1,6 +1,5 @@
 // src/types/guild.ts
-/** Guild-level cooldown configuration */
-
+/** Guild-level cooldown configuration. */
 export interface GuildCooldownConfig {
   useCooldown: boolean;
   cooldownTime: number;

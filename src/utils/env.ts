@@ -1,37 +1,19 @@
 // src/utils/env.ts
-/**
- * @description Manages loading of environment variables and provides helpers to access them.
- *
- *   Call `initialiseEnv()` once at application start (e.g. in your `index.ts`) to load `.env`.
- */
+// Loads `.env` once, when this module is first imported, and provides typed accessors.
+// ESM evaluates imports before the importing module's body, so any module that imports
+// these helpers can read variables at module scope without a separate initialise step.
 
 import dotenv from "dotenv";
 
-let isInitialised = false;
-
-/**
- * Initialise environment variables by loading the `.env` file.
- * Must be called once before any `getRequired` or `getOptional` calls.
- * @param path - Optional path to your env file (defaults to “.env” in project root).
- */
-export function initialiseEnv(path?: string): void {
-  if (isInitialised) return;
-  dotenv.config({ path });
-  isInitialised = true;
-}
+dotenv.config();
 
 /**
  * Retrieve the value of a required environment variable, throwing if it is missing or empty.
  * @param name - The name of the environment variable to fetch.
  * @returns The non-empty string value of the environment variable.
- * @throws {Error} If the variable is not set, is empty, or `initialiseEnv()` has not been called.
+ * @throws {Error} If the variable is not set or is empty.
  */
 export function getRequired(name: string): string {
-  if (!isInitialised) {
-    throw new Error(
-      `Environment not initialised. Call initialiseEnv() before getRequired("${name}").`,
-    );
-  }
   const value = process.env[name];
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
@@ -46,11 +28,6 @@ export function getRequired(name: string): string {
  * @returns The string value of the environment variable, or the provided default.
  */
 export function getOptional(name: string, defaultValue = ""): string {
-  if (!isInitialised) {
-    throw new Error(
-      `Environment not initialised. Call initialiseEnv() before getOptional("${name}").`,
-    );
-  }
   const value = process.env[name];
   return value && value.trim() !== "" ? value : defaultValue;
 }

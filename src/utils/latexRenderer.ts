@@ -1,8 +1,6 @@
 // src/utils/latexRenderer.ts
-/**
- * @description Renders LaTeX expressions to SVG/PNG using MathJax and Sharp,
- *   with deterministic disk caching based on content hashes.
- */
+// Renders LaTeX expressions to SVG/PNG using MathJax and Sharp, with deterministic disk
+// caching based on content hashes.
 
 import { OUTPUT_DIR } from "@/config/paths";
 import logger from "@/utils/logger";

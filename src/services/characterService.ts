@@ -2,7 +2,7 @@
 // Loads persona configuration and builds system prompts and metadata for the AI.
 
 import { DATA_DIR } from "@/config/paths";
-import { userMemory } from "@/store/userMemory";
+import { cloneMemory } from "@/store/cloneMemory";
 import { PersonaConfig } from "@/types/persona";
 import { getOptional } from "@/utils/env";
 import logger from "@/utils/logger";
@@ -97,8 +97,9 @@ export const markdownGuide = loadMarkdownGuide();
 export function getCharacterDescription(userId?: string): string {
   let description = persona.baseDescription;
 
-  if (userId === cloneUserId && userMemory.has(userId)) {
-    const entries = userMemory.get(userId) ?? [];
+  // cloneMemory holds the clone user's own messages; userMemory is mostly the bot's "Replied: ..." entries
+  if (userId === cloneUserId && cloneMemory.has(userId)) {
+    const entries = cloneMemory.get(userId) ?? [];
     const snippet = entries.length
       ? entries
           .slice(-5)

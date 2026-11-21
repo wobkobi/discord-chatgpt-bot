@@ -1,16 +1,19 @@
 {
   "name": "chatgpt",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node -e \"fs.rmSync('build',{recursive:true,force:true,maxRetries:10,retryDelay:200});fs.rmSync('tsconfig.tsbuildinfo',{force:true})\" && tsc && tsc-alias",
     "dev": "tsx watch src/index.ts",
     "format": "prettier --write \"**/*.{js,mjs,cjs,ts,md,json,yml,yaml}\"",
-    "lint": "eslint --fix --cache \"src/**/*.{js,ts}\"",
+    "format:check": "prettier --check \"**/*.{js,mjs,cjs,ts,md,json,yml,yaml}\"",
+    "lint": "eslint --fix --cache \"{src,scripts}/**/*.{js,ts}\"",
+    "lint:check": "eslint --max-warnings=0 \"{src,scripts}/**/*.{js,ts}\"",
     "prepare": "simple-git-hooks",
+    "smoke": "tsx scripts/smoke-test.ts",
     "start": "npm run build && node build/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p scripts/tsconfig.json --noEmit"
   },
   "allowScripts": {
     "esbuild": false,
@@ -18,7 +21,7 @@
   },
   "simple-git-hooks": {
     "pre-commit": "if ! find node_modules/.npm-update-stamp -mmin -1440 2>/dev/null | grep -q .; then npm update --package-lock-only --allow-remote=all --no-audit --no-fund && touch node_modules/.npm-update-stamp; fi && npm install --package-lock-only --allow-remote=all --no-audit --no-fund && git add package-lock.json package.json && npx lint-staged && npm run typecheck",
-    "pre-push": "npm run lint && npm run build"
+    "pre-push": "npm run lint && npm run build && npm run smoke"
   },
   "lint-staged": {
     "**/*.{js,ts}": [
@@ -33,15 +36,12 @@
     "uuid": "^11.1.1"
   },
   "dependencies": {
-    "@discordjs/rest": "^2.6.3",
     "@giphy/js-fetch-api": "^5.8.0",
-    "discord-api-types": "^0.38.60",
     "discord.js": "^14.28.1",
     "dotenv": "^18.0.10",
     "logform": "^2.7.0",
     "luxon": "^3.7.2",
     "mathjax-full": "^3.2.2",
-    "node-fetch": "^3.3.2",
     "openai": "^7.62.0",
     "sanitize-html": "^2.18.2",
     "sharp": "^0.35.5",

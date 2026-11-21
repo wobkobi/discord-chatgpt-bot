@@ -1,7 +1,5 @@
 // src/utils/urlExtractor/extractInlineImages.ts
-/**
- * @description Scans message content for direct image URLs and inlines or references them as Blocks.
- */
+// Scans message content for direct image URLs and inlines or references them as Blocks.
 
 import { Block } from "@/types/block";
 import { stripQuery } from "@/utils/discordHelpers";
@@ -31,7 +29,7 @@ const FETCH_TIMEOUT_MS = 10_000;
  * @param hostname - Hostname from a parsed URL (IPv6 literals keep their brackets).
  * @returns True when the host must not be fetched.
  */
-function isPrivateHost(hostname: string): boolean {
+export function isPrivateHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) return true;
   if (host.includes(":")) {
@@ -54,9 +52,32 @@ function isPrivateHost(hostname: string): boolean {
 }
 
 /**
+ * Fetch an untrusted image URL without letting a redirect reach the private network. Redirects
+ * are handled manually: a public URL could otherwise 302 to a LAN address and bypass
+ * {@link isPrivateHost}. At most one hop is followed, and its target host is re-checked.
+ * @param url - Public image URL that already passed the private-host check.
+ * @returns The final response (the redirect target when one was followed).
+ */
+async function fetchPublicImage(url: string): Promise<Response> {
+  const res = await fetch(url, {
+    redirect: "manual",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (res.status < 300 || res.status >= 400) return res;
+
+  const location = res.headers.get("location");
+  if (!location) throw new Error(`Redirect ${res.status} without Location`);
+  const target = new URL(location, url);
+  if (!/^https?:$/.test(target.protocol) || isPrivateHost(target.hostname)) {
+    throw new Error(`Redirect to blocked target ${target.hostname}`);
+  }
+  return fetch(target, { redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+}
+
+/**
  * Extracts inline images from message text, embedding trusted hosts directly and inlining
  * others as base64. Untrusted downloads are capped in size, time-limited, and blocked from
- * private network addresses.
+ * private network addresses, including via a redirect.
  * @param message - The incoming Discord.js Message.
  * @param blocks - Array to append image_url Blocks.
  * @param seen - Set of URL keys already included.
@@ -75,7 +96,15 @@ export async function extractInlineImages(
   for (const rawUrl of matches) {
     const key = stripQuery(rawUrl);
     if (seen.has(key)) continue;
-    const host = new URL(rawUrl).hostname;
+    let host: string;
+    try {
+      host = new URL(rawUrl).hostname;
+    } catch {
+      // Malformed match such as http://[x.png; skip it rather than failing the reply
+      logger.warn(`[extractInlineImages] Skipping unparseable URL ${rawUrl}`);
+      seen.add(key);
+      continue;
+    }
 
     if (TRUSTED_IMAGE_HOST_RE.test(host)) {
       blocks.push({ type: "image_url", image_url: { url: rawUrl } });
@@ -85,7 +114,7 @@ export async function extractInlineImages(
       continue;
     } else {
       try {
-        const res = await fetch(rawUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+        const res = await fetchPublicImage(rawUrl);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const contentType = res.headers.get("content-type") || "";
         if (!contentType.startsWith("image/")) throw new Error(`Not an image: ${contentType}`);

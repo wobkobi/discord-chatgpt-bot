@@ -1,8 +1,6 @@
 // src/commands/setCooldown.ts
-/**
- * @description Slash command to configure this server's message cooldown settings.
- *   Restricted to the bot owner or server administrators.
- */
+// Slash command to configure this server's message cooldown settings.
+// Restricted to the bot owner or server administrators.
 
 import {
   defaultCooldownConfig,
@@ -16,6 +14,7 @@ import logger from "@/utils/logger";
 import {
   ChatInputCommandInteraction,
   InteractionContextType,
+  MessageFlags,
   PermissionsBitField,
   SlashCommandBuilder,
 } from "discord.js";
@@ -58,6 +57,7 @@ export const data = new SlashCommandBuilder()
     opt
       .setName("time")
       .setDescription("Cooldown duration in seconds (0 to disable)")
+      .setMinValue(0)
       .setRequired(true),
   )
   .addBooleanOption((opt) =>
@@ -78,7 +78,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   if (!OWNER_ID) {
     await interaction.reply({
       content: "⚠️ Bot owner is not configured. Cooldown cannot be changed right now.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -88,7 +88,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   if (!isOwner && !isAdmin) {
     await interaction.reply({
       content: "🚫 You must be a server administrator or the bot owner to configure cooldown.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -97,7 +97,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   if (!guildId) {
     await interaction.reply({
       content: "❌ This command can only be used in a server.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -108,7 +108,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   if (time < 0) {
     await interaction.reply({
       content: "⏱️ Cooldown time must be zero or positive.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -134,5 +134,5 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const reply =
     time === 0 ? `✅ Cooldown disabled.` : `✅ Cooldown set to **${durationText}** ${scopeText}.`;
 
-  await interaction.reply({ content: reply, ephemeral: true });
+  await interaction.reply({ content: reply, flags: MessageFlags.Ephemeral });
 }

@@ -1,13 +1,13 @@
 // src/utils/urlExtractor/extractDiscord.ts
-/**
- * @description Captures Discord stickers and attachments, converting them into ChatGPT Blocks.
- */
+// Captures Discord stickers and attachments, converting them into ChatGPT Blocks.
 
 import { Block } from "@/types/block";
 import { stripQuery } from "@/utils/discordHelpers";
 import logger from "@/utils/logger";
 import { Message } from "discord.js";
-import fetch from "node-fetch";
+
+/** Abort attachment downloads that take longer than this. */
+const FETCH_TIMEOUT_MS = 10_000;
 
 /** Largest PDF attachment the bot will download and embed as base64. */
 const MAX_PDF_BYTES = 8 * 1024 * 1024;
@@ -30,7 +30,7 @@ export function extractStickers(message: Message, blocks: Block[], seen: Set<str
 
 /**
  * Processes message attachments, embedding or skipping based on type:
- * images → image_url blocks; PDFs → base64 file blocks; text → code blocks (truncated at 8000 chars).
+ * images become image_url blocks, PDFs become base64 file blocks, text becomes code blocks (truncated at 8000 chars).
  * @param message - The incoming Discord.js Message.
  * @param blocks - Array to append Block objects.
  * @param seen - Set of URL keys already processed.
@@ -57,8 +57,9 @@ export async function extractAttachments(
         continue;
       }
       try {
-        const buf = await (await fetch(url)).arrayBuffer();
-        const b64 = Buffer.from(buf).toString("base64");
+        const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const b64 = Buffer.from(await res.arrayBuffer()).toString("base64");
         blocks.push({
           type: "file",
           file: { filename: name, file_data: `data:${ct};base64,${b64}` },
@@ -76,7 +77,9 @@ export async function extractAttachments(
         continue;
       }
       try {
-        let txt = await (await fetch(url)).text();
+        const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        let txt = await res.text();
         if (txt.length > 8000) txt = txt.slice(0, 8000) + "... [truncated]";
         const ext = name.split(".").pop() ?? "txt";
         blocks.push({ type: "text", text: `\`\`\`${ext}\n${txt}\n\`\`\`` });

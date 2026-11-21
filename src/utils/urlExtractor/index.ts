@@ -1,7 +1,5 @@
 // src/utils/urlExtractor/index.ts
-/**
- * @description Parses and normalises Discord message contents into structured ChatGPT Blocks.
- */
+// Parses and normalises Discord message contents into structured ChatGPT Blocks.
 
 import { Block } from "@/types/block";
 import { stripQuery } from "@/utils/discordHelpers";
@@ -14,10 +12,10 @@ import {
 } from "@/utils/urlExtractor/extractGifs";
 import { extractInlineImages } from "@/utils/urlExtractor/extractInlineImages";
 import { extractSocialEmbeds } from "@/utils/urlExtractor/extractSocialEmbeds";
+import { IMAGE_EXT_RE } from "@/utils/urlExtractor/patterns";
 import { Message } from "discord.js";
 
-/** Recognises image file extensions for inline detection. */
-export const IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif)(?:\?|$)/i;
+export { IMAGE_EXT_RE };
 
 /**
  * Extracts structured content Blocks and leftover URLs from a Discord message.

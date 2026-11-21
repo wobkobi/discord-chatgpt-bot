@@ -1,21 +1,24 @@
 // src/commands/setbot.ts
-/**
- * @description Slash command to change the bot's username and/or avatar image. Owner only.
- */
+// Slash command to change the bot's username and/or avatar image. Owner only.
 
 import { getRequired } from "@/utils/env";
 import logger from "@/utils/logger";
-import { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import { ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from "discord.js";
 
-const OWNER_ID = getRequired("OWNER_ID");
-const BOT_TOKEN = getRequired("BOT_TOKEN");
+let OWNER_ID = "";
+try {
+  OWNER_ID = getRequired("OWNER_ID");
+} catch (err) {
+  logger.warn("[setbot] OWNER_ID not configured; the command will refuse every user.", err);
+}
 
 /**
- * Slash command definition for /setbot.
+ * Slash command definition for /setbot. Hidden from non-admins by default.
  */
 export const data = new SlashCommandBuilder()
   .setName("setbot")
   .setDescription("Change the bot's username and/or avatar image (Owner only)")
+  .setDefaultMemberPermissions(0)
   .addStringOption((opt) =>
     opt.setName("name").setDescription("New username (max 32 characters)").setRequired(false),
   )
@@ -32,15 +35,21 @@ export const data = new SlashCommandBuilder()
  * @returns Promise that resolves once the identity update reply has been sent.
  */
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-  if (interaction.user.id !== OWNER_ID) {
+  if (!OWNER_ID) {
     await interaction.reply({
-      content: "🚫 You are not allowed to change my identity.",
-      ephemeral: true,
+      content: "⚠️ Bot owner is not configured. Identity cannot be changed right now.",
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  interaction.client.rest.setToken(BOT_TOKEN);
+  if (interaction.user.id !== OWNER_ID) {
+    await interaction.reply({
+      content: "🚫 You are not allowed to change my identity.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   const newName = interaction.options.getString("name");
   const avatarAttachment = interaction.options.getAttachment("avatar");
@@ -48,12 +57,12 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   if (!newName && !avatarAttachment) {
     await interaction.reply({
       content: "❌ Provide at least one option: `name` or `avatar`.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const editPayload: { username?: string; avatar?: Buffer } = {};
 

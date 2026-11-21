@@ -1,7 +1,5 @@
 // src/utils/fileUtils.ts
-/**
- * @description Handles encryption, directory management, and generic data persistence for memory and conversations.
- */
+// Encryption, directory management, and generic data persistence for memory and conversations.
 
 import { CLONE_MEM_DIR, CONV_DIR, USER_MEM_DIR } from "@/config/paths";
 import { ChatMessage, ConversationContext } from "@/types/chat";
@@ -74,23 +72,48 @@ export async function ensureDir(dir: string): Promise<void> {
 }
 
 /**
- * Generic save of JSON-serializable data to a specified directory with encryption.
+ * Write a file atomically: write a sibling temp file, then rename it over the target, so a
+ * crash mid-write leaves the previous contents intact rather than a truncated file. The temp
+ * name carries a random suffix so two overlapping saves of the same file (a debounced save
+ * racing a shutdown flush) never write into each other's temp file.
+ * @param filePath - Destination path.
+ * @param contents - UTF-8 text to write.
+ * @returns Promise that resolves once the rename has completed.
+ */
+export async function writeFileAtomic(filePath: string, contents: string): Promise<void> {
+  const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
+  try {
+    await fs.writeFile(tmpPath, contents, "utf8");
+    await fs.rename(tmpPath, filePath);
+  } catch (err) {
+    await fs.rm(tmpPath, { force: true }).catch((rmErr: unknown) => {
+      logger.warn(`[fileUtils] Failed to remove temp file ${tmpPath}:`, rmErr);
+    });
+    throw err;
+  }
+}
+
+/**
+ * Generic save of JSON-serialisable data to a specified directory with encryption.
  * @param baseDir - The base directory for storage.
  * @param id - Identifier used as the filename (without extension).
- * @param data - The data to serialize and save.
+ * @param data - The data to serialise and save.
  */
 export async function saveData<T>(baseDir: string, id: string, data: T): Promise<void> {
   const filePath = join(baseDir, `${id}.json`);
   await ensureDir(baseDir);
   try {
-    await fs.writeFile(filePath, encrypt(JSON.stringify(data)), "utf8");
+    await writeFileAtomic(filePath, encrypt(JSON.stringify(data)));
   } catch (err) {
     logger.error(`[fileUtils] Failed to write file ${filePath}:`, err);
   }
 }
 
 /**
- * Generic load and decrypt of JSON-serialized data, returning a fallback if not found or on error.
+ * Generic load and decrypt of JSON-serialised data, returning a fallback if not found or on error.
+ * A file that fails GCM authentication was most likely written under a different
+ * ENCRYPTION_KEY, so it is renamed aside rather than deleted: restoring the old key can
+ * still recover it, and the next save starts a fresh file in its place.
  * @param baseDir - The base directory for storage.
  * @param id - Identifier used as the filename (without extension).
  * @param fallback - Value to return if the file is missing or parsing fails.
@@ -104,18 +127,28 @@ export async function loadData<T>(baseDir: string, id: string, fallback: T): Pro
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
     if (e.code === "ENOENT") return fallback;
-    logger.error(`[fileUtils] Failed to load data for id=${id}:`, err);
-    if (
+    // Node reports a GCM tag mismatch as "Unsupported state or unable to authenticate data"
+    const authFailed =
       err instanceof Error &&
-      (err.message.includes("Unable to authenticate data") ||
-        err.message.includes("Unsupported state"))
-    ) {
-      try {
-        await fs.unlink(filePath);
-        logger.warn(`[fileUtils] Deleted corrupt data file ${filePath}`);
-      } catch (unlinkErr) {
-        logger.error(`[fileUtils] Failed to delete corrupt file ${filePath}:`, unlinkErr);
-      }
+      (err.message.includes("unable to authenticate data") ||
+        err.message.includes("Unsupported state"));
+    if (!authFailed) {
+      logger.error(`[fileUtils] Failed to load data for id=${id}:`, err);
+      return fallback;
+    }
+    const asidePath = `${filePath}.corrupt-${Date.now()}`;
+    try {
+      await fs.rename(filePath, asidePath);
+      logger.error(
+        `[fileUtils] Could not decrypt ${filePath}; ENCRYPTION_KEY may be wrong or rotated. ` +
+          `The file was set aside as ${asidePath}, not deleted.`,
+        err,
+      );
+    } catch (renameErr) {
+      logger.error(
+        `[fileUtils] Could not decrypt ${filePath} (ENCRYPTION_KEY may be wrong) and failed to set it aside:`,
+        renameErr,
+      );
     }
     return fallback;
   }

@@ -35,13 +35,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The check variants, not `npm run lint`/`format`: those fix in place, so
+      # a fixable error or formatting slip would pass CI without being committed.
       - name: Run linter
-        run: npm run lint
+        run: npm run lint:check
+
+      - name: Check formatting
+        run: npm run format:check
 
       # Dependabot pull requests are built too, and auto-merge queues patch and
       # minor bumps, so this is the signal that a bump still compiles.
       - name: Build application
         run: npm run build
+
+      # No Discord token or network: command loading and pure-logic checks.
+      - name: Smoke test
+        run: npm run smoke
 
   type-check:
     runs-on: ubuntu-latest

@@ -35,8 +35,8 @@ const FALLBACK_QUERY_WORDS = 3;
 let _client: GiphyFetch | undefined;
 
 /**
- * Read the API key. Deliberately lazy: reading at module scope would run before
- * `initialiseEnv()` and throw during import.
+ * Read the API key. An unset key is not an error: it switches GIF resolution off, so
+ * searches return null and the resolvers leave text untouched.
  * @returns The configured key, or an empty string when GIFs are disabled.
  */
 function apiKey(): string {
@@ -178,7 +178,7 @@ export async function searchGif(query: string): Promise<string | null> {
  * @param slug - The slug segment of a GIF page URL.
  * @returns Space-separated keywords.
  */
-function slugToQuery(slug: string): string {
+export function slugToQuery(slug: string): string {
   let decoded = slug;
   try {
     decoded = decodeURIComponent(slug);

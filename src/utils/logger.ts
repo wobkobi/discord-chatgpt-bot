@@ -1,19 +1,16 @@
 // src/utils/logger.ts
-/**
- * @description Configures and exports a Winston logger with console and file transports,
- *   including daily rotation for combined logs and error-specific logs, and a static "latest.log" symlink.
- *   Uses timestamped formatting, error stack inclusion, and emits an audible bell on error entries.
- */
+// Winston logger with console and file transports: daily rotation for combined and
+// error-only logs, each with a static "latest.log" symlink. Timestamped lines, error
+// stacks included, and an audible bell on error entries.
 
 import { LOGS_DIR, LOGS_ERROR_DIR } from "@/config/paths";
-import { getOptional, initialiseEnv } from "@/utils/env";
+import { getOptional } from "@/utils/env";
 import fs from "fs";
 import { TransformableInfo } from "logform";
 import path from "path";
 import winston from "winston";
 import DailyRotateFile from "winston-daily-rotate-file";
 
-initialiseEnv();
 const { combine, timestamp, printf, colorize, errors } = winston.format;
 
 // Ensure log directories exist

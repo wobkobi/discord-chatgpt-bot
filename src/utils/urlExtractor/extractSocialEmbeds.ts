@@ -1,14 +1,15 @@
 // src/utils/urlExtractor/extractSocialEmbeds.ts
-/**
- * @description Processes social media embeds (Twitter, YouTube, Reddit, Instagram, TikTok) into Blocks.
- */
+// Processes social media embeds (Twitter, YouTube, Reddit, Instagram, TikTok) into Blocks.
 
 import { Block } from "@/types/block";
 import { stripQuery } from "@/utils/discordHelpers";
 import logger from "@/utils/logger";
-import { IMAGE_EXT_RE } from "@/utils/urlExtractor/index";
+import { IMAGE_EXT_RE } from "@/utils/urlExtractor/patterns";
 import { Message } from "discord.js";
 import sanitizeHtml from "sanitize-html";
+
+/** Abort oEmbed lookups that hang rather than stalling the whole reply. */
+const OEMBED_TIMEOUT_MS = 10_000;
 
 const PROVIDERS = [
   { name: "twitter", re: /https?:\/\/(?:www\.)?(?:twitter|x)\.com\/\S+\/status\/\d+/gi },
@@ -55,7 +56,10 @@ export async function extractSocialEmbeds(
  */
 async function handleTwitter(link: string, blocks: Block[]): Promise<void> {
   try {
-    const res = await fetch(`https://publish.twitter.com/oembed?url=${encodeURIComponent(link)}`);
+    const res = await fetch(`https://publish.twitter.com/oembed?url=${encodeURIComponent(link)}`, {
+      signal: AbortSignal.timeout(OEMBED_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as { html?: string };
     const html = data.html || "";
 
@@ -82,7 +86,10 @@ async function handleTwitter(link: string, blocks: Block[]): Promise<void> {
  */
 async function handleYouTube(link: string, blocks: Block[]): Promise<void> {
   try {
-    const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(link)}`);
+    const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(link)}`, {
+      signal: AbortSignal.timeout(OEMBED_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as { title?: string; thumbnail_url?: string };
 
     if (data.thumbnail_url && IMAGE_EXT_RE.test(data.thumbnail_url)) {

@@ -1,14 +1,13 @@
 // src/config/index.ts
-/**
- * @description Defines, loads and persists per-guild settings: cooldown configuration and interjection rate.
- */
+// Defines, loads and persists per-guild settings: cooldown configuration and interjection rate.
 
 import { DATA_DIR, GUILD_CONFIG_FILE } from "@/config/paths";
 import { GuildConfig, GuildCooldownConfig } from "@/types/guild";
+import { writeFileAtomic } from "@/utils/fileUtils";
 import logger from "@/utils/logger";
 import fs from "fs/promises";
 
-/** Default cooldown: on, 2.5 s, per-user. */
+/** Default cooldown: on, 2.5s, per-user. */
 export const defaultCooldownConfig: GuildCooldownConfig = {
   useCooldown: true,
   cooldownTime: 2.5,
@@ -56,7 +55,7 @@ export async function saveGuildConfigs(): Promise<void> {
     for (const [guildId, cfg] of guildConfigs.entries()) {
       toSave[guildId] = cfg;
     }
-    await fs.writeFile(GUILD_CONFIG_FILE, JSON.stringify(toSave, null, 2), "utf-8");
+    await writeFileAtomic(GUILD_CONFIG_FILE, JSON.stringify(toSave, null, 2));
     logger.info("✅ Saved all guild configurations");
   } catch (err: unknown) {
     logger.error("[config] Failed to save guild configurations:", err);
