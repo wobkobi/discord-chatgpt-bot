@@ -10,6 +10,10 @@ permissions:
 on:
   push:
     branches: [main]
+  # Branch protection requires the publish check, so PRs run it too. On a PR it
+  # only builds the image (proving the Dockerfile still works) and pushes nothing.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -25,6 +29,7 @@ jobs:
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -38,7 +43,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           # amd64 only: the target is an x86 NAS, and building sharp under arm64
           # emulation is slow enough to not be worth it until something needs it.
           platforms: linux/amd64
