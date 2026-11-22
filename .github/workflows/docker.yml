@@ -43,9 +43,9 @@ jobs:
           # emulation is slow enough to not be worth it until something needs it.
           platforms: linux/amd64
           tags: |
-            ghcr.io/${{ github.repository_owner }}/chatgpt-x-discord:latest
-            ghcr.io/${{ github.repository_owner }}/chatgpt-x-discord:${{ steps.pkg.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/chatgpt-x-discord:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/discord-chatgpt-bot:latest
+            ghcr.io/${{ github.repository_owner }}/discord-chatgpt-bot:${{ steps.pkg.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/discord-chatgpt-bot:${{ github.sha }}
           build-args: |
             GIT_SHA=${{ github.sha }}
           cache-from: type=gha

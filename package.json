@@ -1,6 +1,6 @@
 {
-  "name": "chatgpt",
-  "version": "2.5.0",
+  "name": "discord-chatgpt-bot",
+  "version": "2.5.1",
   "private": true,
   "type": "module",
   "scripts": {
