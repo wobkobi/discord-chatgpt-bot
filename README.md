@@ -93,12 +93,12 @@ math rendering (`\[ … \]` → attached images), image/file support, and more.
 
 ## 🐳 Docker / TrueNAS
 
-Every push to `main` builds an image and publishes it to `ghcr.io/wobkobi/chatgpt-x-discord`, tagged
-`latest`, the `package.json` version and the commit SHA. The `Build:` line in the boot log names the
-commit the running image came from.
+Every push to `main` builds an image and publishes it to `ghcr.io/wobkobi/discord-chatgpt-bot`,
+tagged `latest`, the `package.json` version and the commit SHA. The `Build:` line in the boot log
+names the commit the running image came from.
 
 ```powershell
-docker run --env-file .env -v ${PWD}/data:/app/data -v ${PWD}/logs:/app/logs ghcr.io/wobkobi/chatgpt-x-discord:latest
+docker run --env-file .env -v ${PWD}/data:/app/data -v ${PWD}/logs:/app/logs ghcr.io/wobkobi/discord-chatgpt-bot:latest
 ```
 
 - `/app/data` holds memory, conversations, guild config and `persona.json`; `/app/logs` holds the

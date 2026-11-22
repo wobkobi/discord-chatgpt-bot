@@ -40,7 +40,7 @@
 
 services:
   bot:
-    image: ghcr.io/wobkobi/chatgpt-x-discord:latest
+    image: ghcr.io/wobkobi/discord-chatgpt-bot:latest
     restart: unless-stopped
 
     # A tag is not a subscription: without this, restarting the app reuses the
